@@ -16,7 +16,7 @@ const norm = (s: string) => s.toLowerCase().replace(/\W+/g, " ").trim();
 
 export async function unansweredMoments(db: Client, repo: string, embed: Embed, opts: { days?: number } = {}): Promise<Moment[]> {
   const asked = (await listQueries(db, { repo, days: opts.days ?? 30, limit: 2000 }))
-    .filter((q) => q.repo === repo && q.tool !== "terminal" && q.results === 0 && q.query.trim().length >= 8);
+    .filter((q) => q.repo === repo && q.tool !== "terminal" && q.surface !== "open_results" && q.results === 0 && q.query.trim().length >= 8);
   if (asked.length < UNANSWERED_MIN) return [];
   const vecs = await embed(asked.map((q) => norm(q.query)));
   const groups: (typeof asked)[] = [];

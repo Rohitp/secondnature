@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
-import { gatherSources } from "../commands/answer.js";
+import { gatherSources, type Source } from "../commands/answer.js";
 import { insightsData, insightsText } from "../commands/insights.js";
 import { loadEmbedder, modelCached, type Embed } from "../embed/model.js";
 import { currentBranch } from "../handoff/handoff.js";
@@ -27,8 +27,15 @@ export const TOOLS = [
   {
     name: "search_history",
     title: "Search past work",
-    description: "Use this before answering or acting on anything that depends on earlier work in this repo: when the engineer says \"like last time\", \"we decided\", \"why did we…\", \"how did we fix…\", names something you don't see explained in the code, or when you're about to try a fix that may have been tried before. It searches what git and the code don't keep: past coding-agent conversations (what was asked, what the agent said and ran, what failed), the lessons the engineer kept, and the branch plan's decisions. Finds by meaning and by words, in under a second. Cite what you use, with its date.",
+    description: "Use this before answering or acting on anything that depends on earlier work in this repo: when the engineer says \"like last time\", \"we decided\", \"why did we…\", \"how did we fix…\", names something you don't see explained in the code, or when you're about to try a fix that may have been tried before. It searches what git and the code don't keep: past coding-agent conversations (what was asked, what the agent said and ran, what failed), the lessons the engineer kept, and the branch plan's decisions. Finds by meaning and by words, in under a second. Each match comes back as one short line; open the ones you need in full with open_results. Cite what you use, with its date.",
     inputSchema: { type: "object", properties: { query: { type: "string", description: "What to look for, in plain words, e.g. \"why we pinned the libsql version\"." }, repo: repoArg, all_repos: { type: "boolean", description: "Search every repo, for something done in another project." } }, required: ["query"] },
+    annotations: READ,
+  },
+  {
+    name: "open_results",
+    title: "Open search results in full",
+    description: "Use this after search_history, when a match's one-line preview looks relevant and you need the whole of it before relying on it: the full exchange, lesson, decision or note. Open only the matches you need, not all of them.",
+    inputSchema: { type: "object", properties: { ids: { type: "array", items: { type: "string" }, description: "The ids search_history showed (or the [n] numbers from the latest search), at most 5." } }, required: ["ids"] },
     annotations: READ,
   },
   {
@@ -104,7 +111,7 @@ export const TOOLS = [
 export const MCP_INSTRUCTIONS = [
   "muninn keeps the engineer's coding history that git and the code don't: past coding-agent conversations, the lessons they kept for agents, branch plans and their decisions, and runs where agents worked together. It's local and answers in under a second, so check it rather than guess.",
   "- Starting on a branch, or after the conversation was compressed: where_left_off, then get_plan.",
-  "- The engineer refers to earlier work (\"last time\", \"we decided\", \"why did we\"), or you're about to retry a fix that may have failed before: search_history.",
+  "- The engineer refers to earlier work (\"last time\", \"we decided\", \"why did we\"), or you're about to retry a fix that may have failed before: search_history, then open_results for the matches you need.",
   "- Unsure how the engineer wants something done: list_lessons.",
   "- About to undo something decided on purpose: get_related.",
   "- They ask for something to be remembered: suggest_lesson (they review it first).",
@@ -129,6 +136,30 @@ export async function resolveRepo(db: Client, a: Args, cwd = process.cwd()): Pro
 
 /** What a tool call found, for the log of agents' questions. Handlers add to it. */
 export type Found = import("../store/queries.js").ResultRef[];
+const KIND: Record<string, Found[number]["kind"]> = { lesson: "lesson", note: "note", decision: "plan", done: "plan", goal: "plan", session: "session", handoff: "handoff" };
+
+// Search answers with a short preview of each match, and the agent opens only the ones it needs, the way
+// Anthropic's code-execution write-up loads detail on demand: ten full matches cost about 4,000 tokens, most unread.
+/** Characters of a match's preview in search_history. */
+export const PREVIEW = 200;
+/** Characters of one match opened in full. */
+export const FULL = 4000;
+export const preview = (t: string) => { const one = t.replace(/\s+/g, " ").trim(); return one.length > PREVIEW ? one.slice(0, PREVIEW - 1) + "…" : one; };
+/** Matches from this server's searches, by id, so open_results gives back what the search found (with its links). */
+const opened = new Map<string, Source>();
+let lastSearch: Source[] = [];
+function remember(hits: Source[]) {
+  lastSearch = hits;
+  for (const h of hits) { opened.delete(h.id); opened.set(h.id, h); }
+  while (opened.size > 300) opened.delete(opened.keys().next().value!);
+}
+/** A match's text from the store, for an id from an earlier server (after a restart): a lesson or note, a stored exchange or plan item, or a handoff. */
+async function lookUp(db: Client, id: string): Promise<string | null> {
+  for (const sql of ["SELECT text FROM lessons WHERE id=?", "SELECT text FROM chunks WHERE id=?", "SELECT text FROM handoffs WHERE id=?"]) {
+    try { const r = (await db.execute({ sql, args: [id] })).rows[0]; if (r) return String(r.text); } catch { /* an older store without the table */ }
+  }
+  return null;
+}
 export async function callTool(db: Client, name: string, a: Args, embed: () => Promise<Embed | null>, found: Found = []): Promise<string> {
   if (name === "list_repos") {
     const rows = (await db.execute("SELECT r.id, (SELECT count(*) FROM lessons l WHERE l.repo_id=r.id AND l.status='live') kept, (SELECT count(*) FROM lessons l WHERE l.repo_id=r.id AND l.status='proposed') waiting, (SELECT count(DISTINCT session) FROM chunks c WHERE c.repo_id=r.id AND c.tool!='plan') sessions FROM repos r ORDER BY r.id")).rows;
@@ -142,10 +173,24 @@ export async function callTool(db: Client, name: string, a: Args, embed: () => P
     const e = await embed();
     if (!e) throw new Error("muninn's local model isn't downloaded yet. Run \"muninn learn --all-repos\" once in a terminal.");
     const hits = await gatherSources(db, q, repo, e, { limit: 10 });
-    const KIND: Record<string, Found[number]["kind"]> = { lesson: "lesson", note: "note", decision: "plan", done: "plan", goal: "plan", session: "session", handoff: "handoff" };
     for (const h of hits) found.push({ kind: KIND[h.kind] ?? "session", id: h.kind === "session" ? String(h.session ?? h.id) : h.id });
     if (!hits.length) return `Nothing muninn keeps${repo ? ` for ${repo.split("/").pop()}` : ""} matches "${q}".${repo ? " Try all_repos." : ""}`;
-    return hits.map((s) => `[${s.n}] ${s.kind.toUpperCase()} · ${s.where}${s.date ? ` · ${s.date}` : ""}\n${s.text.slice(0, 1500)}`).join("\n\n");
+    remember(hits);
+    return [`${hits.length} match(es), best first. Each shows its start; open the ones you need with open_results.`,
+      ...hits.map((s) => `[${s.n}] ${s.kind.toUpperCase()} · ${s.where}${s.date ? ` · ${s.date}` : ""} · id ${s.id}\n${preview(s.text)}`)].join("\n");
+  }
+  if (name === "open_results") {
+    const ids = (Array.isArray(a.ids) ? a.ids : [a.ids]).map((x) => String(x ?? "").trim().replace(/^\[(\d+)\]$/, "$1")).filter(Boolean).slice(0, 5);
+    if (!ids.length) throw new Error("Give the ids search_history showed.");
+    const out: string[] = [];
+    for (const id of ids) {
+      const s = /^\d+$/.test(id) ? lastSearch[Number(id) - 1] : opened.get(id);
+      const text = s?.text ?? await lookUp(db, id);
+      if (text === null) { out.push(`${id}: not found. Run search_history again and use the ids it shows.`); continue; }
+      if (s) found.push({ kind: KIND[s.kind] ?? "session", id: s.kind === "session" ? String(s.session ?? s.id) : s.id });
+      out.push(`${s ? `${s.kind.toUpperCase()} · ${s.where}${s.date ? ` · ${s.date}` : ""} · ` : ""}id ${s?.id ?? id}\n${text.length > FULL ? text.slice(0, FULL) + "…" : text}`);
+    }
+    return out.join("\n\n");
   }
   if (name === "get_plan") {
     if (!repo) throw new Error("Say which repo: the chat isn't running inside one.");
@@ -286,7 +331,7 @@ export async function serveMcp() {
         // The log of agents' questions: what was asked, where, and what it found.
         const repo = await resolveRepo(db, args).catch(() => null);
         const here = repoIdentity(process.cwd());
-        const asked = String(args.query ?? args.about ?? args.text ?? args.id ?? args.branch ?? Object.values(args).filter((v) => typeof v === "string").join(" ") ?? "");
+        const asked = String(args.query ?? (Array.isArray(args.ids) ? args.ids.join(", ") : undefined) ?? args.about ?? args.text ?? args.id ?? args.branch ?? Object.values(args).filter((v) => typeof v === "string").join(" ") ?? "");
         await recordQuery(db, { repo, branch: repo && repo === here ? currentBranch(process.cwd()) : (typeof args.branch === "string" ? args.branch : null), session: process.env.CLAUDE_CODE_SESSION_ID ?? null, tool: client, surface: name, query: asked, results: found.length, result_ids: found, ms: Date.now() - t0, answer });
       } else send({ jsonrpc: "2.0", id: m.id, error: { code: -32601, message: `Unknown method ${m.method}` } });
     } catch (e) { send({ jsonrpc: "2.0", id: m.id, error: { code: -32603, message: e instanceof Error ? e.message : String(e) } }); }
