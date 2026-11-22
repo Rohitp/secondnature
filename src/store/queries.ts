@@ -7,6 +7,8 @@ import { redact } from "../privacy/redact.js";
  * Shows whether muninn is useful to agents: what they ask, how often it finds something, and which lessons they find.
  * Questions you type yourself in a terminal are kept too, marked tool "terminal", so the page can leave them out.
  */
+/** Characters of each answer kept for the Activity page: enough for a search plus five matches opened in full. */
+export const ANSWER_KEPT = 48000;
 export type ResultRef = { kind: "lesson" | "note" | "session" | "plan" | "run" | "handoff" | "link" | "repo"; id: string };
 export type QueryRow = {
   id: string; ts: string; repo: string | null; branch: string | null; session: string | null;
@@ -42,7 +44,7 @@ export async function recordQuery(db: Client, q: Omit<QueryRow, "id" | "ts" | "q
   try {
     await db.execute({
       sql: "INSERT INTO agent_queries (id,ts,repo,branch,session,tool,surface,query,results,result_ids,ms,answer) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-      args: [randomUUID(), new Date().toISOString(), q.repo, q.branch, q.session, q.tool, q.surface, redact(q.query).slice(0, 300), q.results, JSON.stringify(q.result_ids.slice(0, 40)), Math.round(q.ms), q.answer == null ? null : redact(q.answer).slice(0, 8000)],
+      args: [randomUUID(), new Date().toISOString(), q.repo, q.branch, q.session, q.tool, q.surface, redact(q.query).slice(0, 300), q.results, JSON.stringify(q.result_ids.slice(0, 40)), Math.round(q.ms), q.answer == null ? null : redact(q.answer).slice(0, ANSWER_KEPT)],
     });
   } catch { /* never let the log break an answer */ }
 }

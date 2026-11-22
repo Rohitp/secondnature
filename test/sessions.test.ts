@@ -7,7 +7,7 @@ import { readClaude } from "../src/logs/claude-code.js";
 import { scanLogs } from "../src/logs/discover.js";
 import type { LogEvent, Session } from "../src/logs/types.js";
 import { openDb } from "../src/store/db.js";
-import { archivedOnly, archiveLogs, exchanges, indexSessions } from "../src/store/sessions.js";
+import { archivedOnly, archiveLogs, exchanges, indexSessions, keepEnds } from "../src/store/sessions.js";
 import { fakeEmbed, tmp, useHome, write } from "./helpers.js";
 
 beforeEach(() => { useHome(); });
@@ -34,6 +34,15 @@ describe("sessions as exchanges", () => {
     expect(ex[0]!.text).toContain("`stripe listen` failed: Error: invalid signature");
     expect(ex[0]!.text).toContain("FILES: edit src/webhook.ts");
     expect(ex[0]!.text).not.toContain("before anything was typed");
+  });
+  it("keeps a long agent reply whole, and says how much was left out of one too long to keep", () => {
+    const reply = Array.from({ length: 60 }, (_, i) => `Point ${i}: the agent explains its reasoning here.`).join("\n"); // ~3,000 characters
+    const s: Session = { id: "s", tool: "claude-code", cwd: "/r", clientVersion: "1", unknown: 0, events: [typed("how should we build it?", 1), { k: "agent", text: reply, ts: ts(2) }] };
+    const text = exchanges(s)[0]!.text;
+    expect(text).toContain("Point 30: the agent explains"); // the middle, which used to be dropped
+    expect(text).not.toContain("left out");
+    const cut = keepEnds("a".repeat(5000), 3000);
+    expect(cut).toMatch(/^a{1000}\n\[… 2,000 characters left out …\]\na{2000}$/);
   });
   it("never keeps <private> text, from where the logs are read onwards", () => {
     const f = join(tmp(), "s.jsonl");

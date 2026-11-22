@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { insightsData, insightsText } from "../src/commands/insights.js";
 import { openDb } from "../src/store/db.js";
-import { lessonFinds, listQueries, recordQuery, toolFromClient, whoIsAsking } from "../src/store/queries.js";
+import { ANSWER_KEPT, lessonFinds, listQueries, recordQuery, toolFromClient, whoIsAsking } from "../src/store/queries.js";
 import { useHome } from "./helpers.js";
 
 const repo = "github.com/me/app";
@@ -28,14 +28,14 @@ describe("the log of what agents ask", () => {
   });
   it("keeps the answer the agent got back, with private details hidden, so the page can show it", async () => {
     const db = await openDb();
-    await recordQuery(db, ask({ query: "deploy key", answer: "Use the key ghp_abcdefghijklmnopqrstuvwxyz0123456789 to deploy.\n" + "y".repeat(9000) }));
+    await recordQuery(db, ask({ query: "deploy key", answer: "Use the key ghp_abcdefghijklmnopqrstuvwxyz0123456789 to deploy.\n" + "y".repeat(60000) }));
     await recordQuery(db, ask({ query: "older" }));
     const rows = await listQueries(db, { repo });
     const none = rows.find((r) => r.query === "older"), got = rows.find((r) => r.query === "deploy key");
     expect(none!.answer).toBeNull();
     expect(got!.answer!.startsWith("Use the key")).toBe(true);
     expect(got!.answer).not.toContain("ghp_abcdefghijklmnopqrstuvwxyz0123456789");
-    expect(got!.answer!.length).toBeLessThanOrEqual(8000);
+    expect(got!.answer!.length).toBe(ANSWER_KEPT);
   });
   it("names who is asking from their environment or MCP client", () => {
     expect(whoIsAsking({ CLAUDECODE: "1", CLAUDE_CODE_SESSION_ID: "s1" }, false)).toEqual({ tool: "claude-code", session: "s1" });

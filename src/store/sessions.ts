@@ -12,8 +12,17 @@ import { repoIdentity } from "../repo/identity.js";
 export { PRIVATE, stripPrivate } from "../logs/types.js";
 import { stripPrivate } from "../logs/types.js";
 
-/** How much of each part an exchange keeps, so one long answer or command dump doesn't swamp it. */
-const CAP = { typed: 2000, agent: 1600, cmds: 20, cmd: 140, files: 20, text: 5000, embed: 1500 };
+/**
+ * How much of each part an exchange keeps. Generous enough that nearly every reply is kept whole; past that, the
+ * start and end are kept and the gap says how much was left out. Search by meaning reads only the first `embed`.
+ */
+const CAP = { typed: 4000, agent: 8000, cmds: 20, cmd: 140, files: 20, text: 12000, embed: 1500 };
+/** Keeps the start and end of text that's too long, saying how much of the middle was left out. */
+export const keepEnds = (t: string, max: number) => {
+  if (t.length <= max) return t;
+  const head = Math.floor(max / 3), tail = max - head;
+  return `${t.slice(0, head)}\n[… ${(t.length - head - tail).toLocaleString("en-GB")} characters left out …]\n${t.slice(-tail)}`;
+};
 export type Exchange = { seq: number; ts: string; text: string };
 
 /**
@@ -26,15 +35,15 @@ export function exchanges(s: Session): Exchange[] {
   const flush = () => {
     if (!cur) return;
     const agent = cur.agent.join("\n").trim();
-    const said = agent.length > CAP.agent ? `${agent.slice(0, 400)} … ${agent.slice(-(CAP.agent - 400))}` : agent;
+    const said = keepEnds(agent, CAP.agent);
     const text = [
-      `ENGINEER: ${cur.typed.slice(0, CAP.typed)}`,
+      `ENGINEER: ${keepEnds(cur.typed, CAP.typed)}`,
       said ? `AGENT: ${said}` : "",
       cur.cmds.length ? `RAN: ${cur.cmds.slice(0, CAP.cmds).join("; ")}${cur.cmds.length > CAP.cmds ? `; and ${cur.cmds.length - CAP.cmds} more` : ""}` : "",
       cur.files.size ? `FILES: ${[...cur.files].slice(0, CAP.files).join(", ")}` : "",
       cur.stopped ? "The engineer stopped the answer." : "",
     ].filter(Boolean).join("\n");
-    out.push({ seq: cur.seq, ts: cur.ts, text: redact(stripPrivate(text)).slice(0, CAP.text) });
+    out.push({ seq: cur.seq, ts: cur.ts, text: keepEnds(redact(stripPrivate(text)), CAP.text) });
   };
   s.events.forEach((e, i) => {
     if (e.k === "typed") { flush(); cur = { seq: i, ts: e.ts, typed: e.text.trim(), agent: [], cmds: [], files: new Set(), stopped: false }; return; }

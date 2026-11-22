@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { answerData, gatherSources } from "../src/commands/answer.js";
-import { callTool, resolveRepo, TOOLS } from "../src/mcp/server.js";
+import { callTool, cutClean, resolveRepo, TOOLS } from "../src/mcp/server.js";
 import { installMcp, uninstallMcp } from "../src/mcp/install.js";
 import { addItem } from "../src/plan/plan.js";
 import { repoIdentity } from "../src/repo/identity.js";
@@ -261,5 +261,16 @@ describe("reviewing a suggestion from a chat", () => {
     await expect(callTool(db, "review_lesson", { id: a, action: "keep", engineer_said: "keep it" }, embed)).rejects.toThrow(/already kept/);
     expect(await callTool(db, "review_lesson", { id: b, action: "dismiss", engineer_said: "drop that one" }, embed)).toMatch(/^Dismissed/);
     expect((await getLesson(db, b))?.status).toBe("rejected");
+  });
+});
+
+describe("opening a match too long to send whole", () => {
+  it("cuts at a sentence or line break, never mid-word, and says how much is left", () => {
+    const t = Array.from({ length: 40 }, (_, i) => `Sentence number ${i} is here.`).join(" ");
+    const out = cutClean(t, 300);
+    const [kept, note] = out.split("\n[Cut here: ");
+    expect(kept!.endsWith(".")).toBe(true);
+    expect(note).toBe(`${(t.length - kept!.length).toLocaleString("en-GB")} more characters not shown.]`);
+    expect(cutClean("short", 300)).toBe("short");
   });
 });
