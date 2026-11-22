@@ -28,6 +28,7 @@ const USAGE = `muninn: lessons that carry across coding sessions
   muninn setup                  Set everything up and take a first look (start here)
   muninn connect                Connect (or re-check) hooks, plugin, MCP and the background job for every tool here
   muninn report [--all]         Did kept lessons work: delivered, and seen again since
+  muninn report --page [file]   The same as one HTML page to send someone (worked, came back, stale, savings)
   muninn keep <id> | reject <id>  Keep a waiting lesson with muninn's suggested delivery, or reject it
   muninn dial [quiet|start|anytime]  When muninn speaks up to agents here: only when asked,
                                 at session start, or whenever relevant
