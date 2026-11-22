@@ -44,7 +44,7 @@ describe("answers from everything muninn keeps", () => {
 
 describe("the MCP tools", () => {
   it("lists its tools, each with a schema", () => {
-    expect(TOOLS.map((t) => t.name)).toEqual(["search_history", "where_left_off", "get_plan", "list_lessons", "get_related", "get_week", "get_runs", "list_repos", "suggest_lesson", "review_lesson"]);
+    expect(TOOLS.map((t) => t.name)).toEqual(["search_history", "open_results", "where_left_off", "get_plan", "list_lessons", "get_related", "get_week", "get_runs", "list_repos", "suggest_lesson", "review_lesson"]);
     for (const t of TOOLS) expect(t.inputSchema.type).toBe("object");
   });
   it("says when to use each tool first, and marks which ones only read", () => {
@@ -69,6 +69,26 @@ describe("the MCP tools", () => {
     expect((await listLessons(db, { repo, status: "proposed" })).map((l) => l.text)).toEqual(["Run npm publish from a terminal so the code prompt works."]);
     expect(await callTool(db, "list_repos", {}, embed)).toContain("shop");
   });
+  it("answers a search with one short line per match, and opens only the matches asked for", async () => {
+    const db = await seed();
+    const long = "The release checklist: " + "run the tests, build, tag the version, ".repeat(30) + "then publish.";
+    const file = join(tmp(), "log2.jsonl"); writeFileSync(file, "x");
+    await indexSessions(db, [{ id: "s2", tool: "claude-code", cwd: root, clientVersion: "1", unknown: 0, file, events: [
+      { k: "typed", text: "what is the release checklist", ts: "2026-11-21T10:00:00.000Z" },
+      { k: "agent", text: long, ts: "2026-11-21T10:00:10.000Z" },
+    ] }], fakeEmbed);
+    const list = await callTool(db, "search_history", { query: "release checklist", repo: "shop" }, embed);
+    expect(list).toContain("open the ones you need with open_results");
+    expect(list).not.toContain("then publish.");
+    // Every preview is one line, at most 200 characters.
+    for (const l of list.split("\n").filter((l) => !l.startsWith("[") && !/match\(es\)/.test(l))) expect(l.length).toBeLessThanOrEqual(200);
+    const id = list.match(/\[(\d+)\] SESSION[^\n]*· id (\S+)\n[^\n]*release checklist/i)!;
+    const full = await callTool(db, "open_results", { ids: [id[2]!] }, embed);
+    expect(full).toContain("then publish.");
+    // The [n] number from the latest search works too, and an unknown id says what to do.
+    expect(await callTool(db, "open_results", { ids: [id[1]!] }, embed)).toContain("then publish.");
+    expect(await callTool(db, "open_results", { ids: ["nope"] }, embed)).toContain("Run search_history again");
+  });
   it("speaks the protocol over stdin and stdout", async () => {
     const child = spawn(join(process.cwd(), "node_modules/.bin/tsx"), [join(process.cwd(), "src/cli.ts"), "mcp"], { env: process.env, stdio: ["pipe", "pipe", "pipe"] });
     const lines: any[] = [];
@@ -82,7 +102,7 @@ describe("the MCP tools", () => {
     await new Promise<void>((ok, fail) => { const t = setInterval(() => { if (lines.length >= 3) { clearInterval(t); ok(); } }, 50); setTimeout(() => { clearInterval(t); fail(new Error(`only ${lines.length} replies`)); }, 15000); });
     child.kill();
     expect(lines[0]).toMatchObject({ id: 1, result: { protocolVersion: "2025-06-18", serverInfo: { name: "muninn" } } });
-    expect(lines[1].result.tools).toHaveLength(10);
+    expect(lines[1].result.tools).toHaveLength(11);
     expect(lines[2].result.content[0].text).toContain("shop");
   }, 30000);
 });
