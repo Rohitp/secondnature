@@ -142,8 +142,16 @@ const KIND: Record<string, Found[number]["kind"]> = { lesson: "lesson", note: "n
 // Anthropic's code-execution write-up loads detail on demand: ten full matches cost about 4,000 tokens, most unread.
 /** Characters of a match's preview in search_history. */
 export const PREVIEW = 200;
-/** Characters of one match opened in full. */
-export const FULL = 4000;
+/** Characters of one match opened in full. Most stored exchanges fit; longer ones end with a note saying so. */
+export const FULL = 8000;
+/** Cuts at a line or sentence break, never mid-word, and says how much was left out so the agent doesn't take it as whole. */
+export const cutClean = (t: string, max: number) => {
+  if (t.length <= max) return t;
+  const brk = Math.max(t.lastIndexOf("\n", max), t.lastIndexOf(". ", max) + 1);
+  const space = t.lastIndexOf(" ", max);
+  const at = brk > max * 0.6 ? brk : space > max * 0.6 ? space : max;
+  return `${t.slice(0, at).trimEnd()}\n[Cut here: ${(t.length - at).toLocaleString("en-GB")} more characters not shown.]`;
+};
 export const preview = (t: string) => { const one = t.replace(/\s+/g, " ").trim(); return one.length > PREVIEW ? one.slice(0, PREVIEW - 1) + "…" : one; };
 /** Matches from this server's searches, by id, so open_results gives back what the search found (with its links). */
 const opened = new Map<string, Source>();
@@ -188,7 +196,7 @@ export async function callTool(db: Client, name: string, a: Args, embed: () => P
       const text = s?.text ?? await lookUp(db, id);
       if (text === null) { out.push(`${id}: not found. Run search_history again and use the ids it shows.`); continue; }
       if (s) found.push({ kind: KIND[s.kind] ?? "session", id: s.kind === "session" ? String(s.session ?? s.id) : s.id });
-      out.push(`${s ? `${s.kind.toUpperCase()} · ${s.where}${s.date ? ` · ${s.date}` : ""} · ` : ""}id ${s?.id ?? id}\n${text.length > FULL ? text.slice(0, FULL) + "…" : text}`);
+      out.push(`${s ? `${s.kind.toUpperCase()} · ${s.where}${s.date ? ` · ${s.date}` : ""} · ` : ""}id ${s?.id ?? id}\n${cutClean(text, FULL)}`);
     }
     return out.join("\n\n");
   }
