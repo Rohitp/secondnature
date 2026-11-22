@@ -19,14 +19,17 @@ export type RuleFile = { name: string; body: string };
 export async function cursorRules(db: Client, repo: string, root?: string, role: string | null = null): Promise<RuleFile[]> {
   // A role's lessons go only into that role's worktree; the repo's own folder gets the lessons for every agent.
   const scope = "status='live' AND off=0 AND (scope='global' OR repo_id=?) AND (role IS NULL OR role IS ?)";
-  const always = (await db.execute({ sql: `SELECT text FROM lessons WHERE ${scope} AND always_on=1 ORDER BY updated_at`, args: [repo, role] })).rows.map((r) => String(r.text));
+  // Lessons already in the team's shared Cursor rule aren't repeated in muninn's own.
+  const shared = await (await import("./team.js")).sharedIn(db, repo);
+  const dup = (id: unknown) => shared.targets.has("cursor") && shared.ids.has(String(id));
+  const always = (await db.execute({ sql: `SELECT id,text FROM lessons WHERE ${scope} AND always_on=1 ORDER BY updated_at`, args: [repo, role] })).rows.filter((r) => !dup(r.id)).map((r) => String(r.text));
   const files: RuleFile[] = [{
     name: `${PREFIX}.mdc`,
     body: `---\ndescription: Lessons kept in muninn for this repo\nalwaysApply: true\n---\n\n# Lessons from muninn\n\n${HEADER}\n\n${always.map((t) => `- ${t}`).join("\n") || "- None yet."}\n\n${ASK}\n`,
   }];
-  const kw = (await db.execute({ sql: "SELECT lower(t.pattern) p, l.text FROM triggers t JOIN lessons l ON l.id=t.lesson_id WHERE l.status='live' AND l.off=0 AND (l.scope='global' OR l.repo_id=?) AND (l.role IS NULL OR l.role IS ?) AND l.always_on=0 ORDER BY p, l.updated_at", args: [repo, role] })).rows;
+  const kw = (await db.execute({ sql: "SELECT l.id, lower(t.pattern) p, l.text FROM triggers t JOIN lessons l ON l.id=t.lesson_id WHERE l.status='live' AND l.off=0 AND (l.scope='global' OR l.repo_id=?) AND (l.role IS NULL OR l.role IS ?) AND l.always_on=0 ORDER BY p, l.updated_at", args: [repo, role] })).rows;
   const groups = new Map<string, string[]>();
-  for (const r of kw) { const p = String(r.p); if (!groups.has(p)) groups.set(p, []); groups.get(p)!.push(String(r.text)); }
+  for (const r of kw) { if (dup(r.id)) continue; const p = String(r.p); if (!groups.has(p)) groups.set(p, []); groups.get(p)!.push(String(r.text)); }
   for (const [p, texts] of groups) {
     const desc = `Use when the task involves "${p}". ${texts[0]!.slice(0, 160)}`;
     files.push({ name: `${PREFIX}-${slug(p)}.mdc`, body: `---\ndescription: ${yamlText(desc)}\nalwaysApply: false\n---\n\n# muninn lessons for "${p}"\n\n${HEADER}\n\n${texts.map((t) => `- ${t}`).join("\n")}\n` });

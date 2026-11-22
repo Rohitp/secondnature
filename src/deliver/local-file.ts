@@ -31,15 +31,15 @@ export const clean = (t: string) => t.replace(/\s+/g, " ").replace(/<!--/g, "&lt
  * Where muninn's part of a file starts and ends: a line that is exactly the start marker, through the next line
  * that is exactly the end marker. A marker quoted in a sentence, indented, or inside a code example doesn't count.
  */
-export function findBlock(text: string): { start: number; end: number } | null {
+export function findBlock(text: string, startMark = START, endMark = END): { start: number; end: number } | null {
   let offset = 0, start: number | null = null, fence: string | null = null;
   for (const line of text.split(/(?<=\n)/)) {
     const bare = line.replace(/\r?\n$/, "").trimEnd();
     const f = bare.match(/^ {0,3}(`{3,}|~{3,})/);
     if (f) { if (fence === null) fence = f[1]!; else if (f[1]![0] === fence[0] && f[1]!.length >= fence.length && bare.trim() === f[1]) fence = null; }
     else if (fence === null) {
-      if (bare === START) start = offset;
-      else if (bare === END && start !== null) return { start, end: offset + bare.length };
+      if (bare === startMark) start = offset;
+      else if (bare === endMark && start !== null) return { start, end: offset + bare.length };
     }
     offset += line.length;
   }
@@ -47,8 +47,8 @@ export function findBlock(text: string): { start: number; end: number } | null {
 }
 
 /** The file with muninn's part replaced, added at the end, or taken out (block null). Everything else is kept. */
-export function withBlock(text: string, block: string | null): string {
-  const at = findBlock(text);
+export function withBlock(text: string, block: string | null, startMark = START, endMark = END): string {
+  const at = findBlock(text, startMark, endMark);
   if (at) {
     const before = text.slice(0, at.start), after = text.slice(at.end).replace(/^\r?\n/, "");
     if (block) return before + block + "\n" + after;
@@ -59,7 +59,10 @@ export function withBlock(text: string, block: string | null): string {
 }
 
 export async function blockFor(db: Client, repo: string): Promise<string> {
-  const rows = (await db.execute({ sql: "SELECT text FROM lessons WHERE status='live' AND off=0 AND always_on=1 AND role IS NULL AND (scope='global' OR repo_id=?) ORDER BY updated_at", args: [repo] })).rows;
+  // Lessons already in the team's CLAUDE.md aren't repeated here.
+  const shared = (await (await import("./team.js")).sharedIn(db, repo));
+  const rows = (await db.execute({ sql: "SELECT id,text FROM lessons WHERE status='live' AND off=0 AND always_on=1 AND role IS NULL AND (scope='global' OR repo_id=?) ORDER BY updated_at", args: [repo] })).rows
+    .filter((r) => !(shared.targets.has("claude") && shared.ids.has(String(r.id))));
   return [
     START,
     "## Lessons from muninn",

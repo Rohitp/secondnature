@@ -89,6 +89,9 @@ export async function deliver(db: Client, client: string, input: HookInput): Pro
   // Where always-on lessons are in CLAUDE.local.md, Claude Code has read them already: sending them again doubles them.
   // They're still logged as told (from the file), so the panel and the "came back" check see them.
   const inFile = client === "claude-code" && !!repo && (await lessonFileMode(db, repo)) === "local";
+  // Lessons in the team's CLAUDE.md (Claude Code) or AGENTS.md (Codex) were read from there: don't send them again.
+  const team = await (await import("./team.js")).sharedIn(db, repo);
+  const teamFile = team.targets.has(client === "codex" ? "agents" : "claude") ? team.ids : new Set<string>();
   if (event === "SessionStart" || event === "SubagentStart") {
     rows = (await db.execute({ sql: `SELECT l.id,l.text,l.always_on,l.updated_at,l.role,NULL pattern FROM lessons l WHERE ${scope} AND l.always_on=1`, args: [repo, repo, role] })).rows as unknown as Row[];
   } else if (event === "UserPromptSubmit" || failed(event, input)) {
@@ -113,6 +116,7 @@ export async function deliver(db: Client, client: string, input: HookInput): Pro
   for (const r of ranked) {
     // A role's lessons are never in CLAUDE.local.md, which every agent reads.
     if (inFile && r.always_on && !r.role && (event === "SessionStart" || event === "SubagentStart")) { await log("sent", { id: r.id, pattern: FILE }, 0); continue; }
+    if (teamFile.has(r.id) && r.always_on && (event === "SessionStart" || event === "SubagentStart")) { await log("sent", { id: r.id, pattern: client === "codex" ? "AGENTS.md" : "CLAUDE.md" }, 0); continue; }
     const t = tokens(r.text);
     if (out.length >= cfg.maxPerDelivery || here + t > cfg.tokensPerDelivery || used + t > cfg.tokensPerSession) { await log("limit", r); continue; }
     out.push(r); here += t; used += t;
