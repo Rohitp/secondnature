@@ -153,6 +153,16 @@ input[type=text] { width: 100%; height: 40px; border: 1px solid var(--line-stron
 .btn.textbtn { border: 0; background: none; padding: 0; height: auto; color: var(--warn); margin-left: auto; }
 .fix { height: 30px; padding: 0 12px; border-radius: 999px; border: 0; background: var(--warn-bg); color: var(--warn); font-size: 13px; font-weight: 600; cursor: pointer; margin-top: 6px; }
 .evidence { font-size: 13px; color: var(--muted); margin-top: 12px; }
+/* An agent's search answer, one card per match. */
+.match { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; margin-top: 6px; }
+.match > summary { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; padding: 8px 12px; cursor: pointer; }
+.match > summary .peek { flex: 1 1 260px; min-width: 0; font-size: 13px; color: var(--muted); }
+.match[open] > summary .peek { display: none; }
+.matchbody { padding: 0 12px 10px; font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; max-height: 460px; overflow: auto; }
+.turn { display: grid; grid-template-columns: 52px 1fr; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); }
+.turn:first-child { border-top: 0; }
+.turn .who { font-size: 12px; font-weight: 600; color: var(--muted); }
+.cutmark { margin: 6px 0; padding: 3px 8px; border: 1px dashed var(--line); border-radius: 6px; font-size: 12px; color: var(--caution); background: var(--caution-bg); }
 .evidence .run { margin-top: 6px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; font-size: 12px; color: var(--ink); white-space: pre-wrap; }
 .empty { padding: 16px 18px; color: var(--muted); }
 .check { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line-strong); background: var(--group); cursor: pointer; flex: none; padding: 0; }
@@ -1156,6 +1166,67 @@ const SURFACE_SAYS = {
   where_left_off: "read where the last session left off", review_lesson: "kept or dismissed a lesson", ask: "ran muninn ask", recall: "ran muninn recall", related: "ran muninn related",
 };
 const FOUND_KIND = { lesson: "Lesson", note: "Note", session: "Past session", plan: "Plan", run: "Run", handoff: "Where a session left off", link: "Links", repo: "Repo" };
+/* Search answers come as "[n] KIND · repo · branch · date[ · id x]\ntext" blocks. Split them so each match reads as its own card. */
+const MATCH_KIND = { LESSON: "Lesson", NOTE: "Note", DECISION: "Decision", DONE: "Finished work", GOAL: "Branch goal", SESSION: "Past session", HANDOFF: "Where a session left off" };
+const PER_MATCH = 1500, KEPT_CHARS = 8000; // what search_history sends per match, and what secondnature keeps of each answer
+function splitMatches(answer) {
+  const parts = String(answer).split(/\n\n(?=\[\d+\] [A-Z]+ · )/);
+  if (!/^\[\d+\] [A-Z]+ · /.test(parts[0] || "")) return null;
+  return parts.map((p) => {
+    const nl = p.indexOf("\n"); const head = nl < 0 ? p : p.slice(0, nl); const body = nl < 0 ? "" : p.slice(nl + 1);
+    const m = head.match(/^\[(\d+)\] ([A-Z]+) · (.*)$/); const bits = m[3].split(" · ").filter((b) => !b.startsWith("id "));
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(bits[bits.length - 1] || "") ? bits.pop() : null;
+    return { n: +m[1], kind: m[2], repo: bits[0] || null, branch: bits[1] || null, date, body };
+  });
+}
+// Light markdown for agent replies: headings, bold, code, simple tables. Escapes first.
+function mdLite(s) {
+  const inline = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, '<code class="mono">$1</code>');
+  const out = []; const lines = s.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    if (/^\s*\|.*\|\s*$/.test(l)) {
+      const rows = []; while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) rows.push(lines[i++]); i--;
+      const cells = rows.filter((r) => !/^\s*\|[\s:|-]+\|\s*$/.test(r)).map((r) => r.trim().slice(1, -1).split("|").map((c) => inline(c.trim())));
+      out.push(`<table class="data" style="margin:6px 0;font-size:12px"><tbody>${cells.map((c, j) => `<tr>${c.map((v) => (j ? `<td>${v}</td>` : `<th>${v}</th>`)).join("")}</tr>`).join("")}</tbody></table>`);
+    } else if (/^#{1,4} /.test(l)) out.push(`<div style="font-weight:600;margin-top:8px">${inline(l.replace(/^#+ /, ""))}</div>`);
+    else out.push(l.trim() ? `<div>${inline(l)}</div>` : '<div style="height:6px"></div>');
+  }
+  return out.join("");
+}
+// A cut the reader should see: where the text stops, and why.
+const cutMark = (why) => `<div class="cutmark" title="${esc(why)}">✂ ${esc(why)}</div>`;
+function matchBody(k, last, storeCut) {
+  let body = k.body;
+  // Plans repeat their kind and branch in front of the text ("DONE on m5/x: …"); the card already says both.
+  if (["DONE", "GOAL", "DECISION"].includes(k.kind)) body = body.replace(/^[A-Z]+ on [^:]+: /, "");
+  const sentCut = body.length >= PER_MATCH && !(last && storeCut);
+  const render = (t) => {
+    // Session excerpts are turns: ENGINEER: / AGENT:. A " … " inside means search kept the start and end and dropped the middle.
+    const pieces = t.split(/ … /);
+    return pieces.map((p, i) => mdLite(p) + (i < pieces.length - 1 ? cutMark("Middle left out: search kept the start and end of this part") : "")).join("");
+  };
+  const turns = k.kind === "SESSION" ? body.split(/\n(?=(?:ENGINEER|AGENT): )/) : [body];
+  const html = turns.map((t) => {
+    const who = t.match(/^(ENGINEER|AGENT): /);
+    return who ? `<div class="turn"><div class="who">${who[1] === "ENGINEER" ? "You" : "Agent"}</div><div>${render(t.slice(who[0].length))}</div></div>` : render(t);
+  }).join("");
+  return html + (sentCut ? cutMark(`The agent saw only the first ${PER_MATCH.toLocaleString()} characters of this match`) : "")
+    + (last && storeCut ? cutMark(`secondnature kept only the first ${KEPT_CHARS.toLocaleString()} characters of this answer, so the rest isn't shown. The agent saw more.`) : "");
+}
+function answerView(x) {
+  const matches = splitMatches(x.answer);
+  const raw = `<pre style="white-space:pre-wrap;font:12px/1.6 var(--mono);margin:4px 0 0;max-height:420px;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px 14px">${esc(x.answer)}</pre>`;
+  if (!matches) return raw;
+  const storeCut = x.answer.length >= KEPT_CHARS;
+  const hidden = x.results - matches.length;
+  const cards = matches.map((k, i) => `<details class="match"${i < 2 ? " open" : ""}><summary><span class="kind">${esc(MATCH_KIND[k.kind] || k.kind)}</span>
+      <span style="color:var(--muted);font-size:12px">${[k.branch ? `on ${esc(k.branch)}` : null, k.repo && k.repo !== short(x.repo) ? `in ${esc(k.repo)}` : null, k.date ? esc(shortDate(k.date)) : null].filter(Boolean).join(" · ")}</span>
+      <span class="peek">${esc(clip(k.body.replace(/^[A-Z]+ on [^:]+: /, "").replace(/^(ENGINEER|AGENT): /, ""), 110))}</span></summary>
+      <div class="matchbody">${matchBody(k, i === matches.length - 1, storeCut)}</div></details>`).join("");
+  return `<p style="margin:4px 0 8px;font-size:13px">${matches.length} match${matches.length === 1 ? "" : "es"} shown here, best first.${hidden > 0 ? ` ${hidden} more ${hidden === 1 ? "was" : "were"} found but ${storeCut ? "didn't fit in what secondnature kept of the answer" : "aren't in the stored answer"}.` : ""} Click a match to open or close it.</p>
+    ${cards}<details style="margin-top:10px"><summary style="font-size:12px;color:var(--muted);cursor:pointer">Exact text the agent received</summary>${raw}</details>`;
+}
 /* The opened question: everything it asked, and what it got back. Rows from before answers were kept list what was found. */
 function askedDetail(x) {
   const lessons = [...(data.kept || []), ...(data.suggested || [])];
@@ -1166,10 +1237,10 @@ function askedDetail(x) {
   const facts = [`${esc(TOOL_NAMES[x.tool] || x.tool)} ${esc(SURFACE_SAYS[x.surface] || `used ${x.surface}`)}`, x.repo ? `in ${esc(short(x.repo))}` : null, x.branch ? `on ${esc(x.branch)}` : null, `took ${x.ms < 1000 ? `${x.ms} ms` : `${(x.ms / 1000).toFixed(1)} s`}`, x.session ? `session <span class="mono">${esc(x.session.slice(0, 8))}</span>` : null].filter(Boolean).join(" · ");
   return `<tr class="askdetail"><td colspan="4" style="background:var(--fill)">
     <div style="font-size:13px;color:var(--muted);margin-bottom:8px">${facts}</div>
-    <div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">Asked</div>
+    <div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">${x.surface === "search_history" ? "Words the agent searched for" : "Asked"}</div>
     <div style="margin:2px 0 12px">${x.query ? esc(x.query) : '<span style="color:var(--muted)">No question: a lookup with no words, such as listing the repos.</span>'}</div>
     <div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">${x.answer != null ? "What it got back" : "What it found"}</div>
-    ${x.answer != null ? `<pre style="white-space:pre-wrap;font:12px/1.6 var(--mono);margin:4px 0 0;max-height:420px;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px 14px">${esc(x.answer)}</pre>`
+    ${x.answer != null ? answerView(x)
       : found ? `<ul style="margin:4px 0 0;padding-left:18px">${found}</ul><p class="note" style="margin-top:8px">Asked before secondnature kept the text of each answer, so only what it found is shown.</p>`
       : `<p style="margin:4px 0 0">Nothing. This was asked before secondnature kept the text of each answer.</p>`}
   </td></tr>`;
@@ -1183,13 +1254,13 @@ function askedSection() {
   const bySurface = count((x) => x.surface).slice(0, 4).map(([k, n]) => `<span class="tag">${esc(k)}</span> ${n}`).join(" ");
   // Asked more than once, in about the same words.
   const again = count((x) => x.query.toLowerCase().replace(/\s+/g, " ").trim()).filter(([k, n]) => n > 1 && k).slice(0, 3);
-  const rows = qs.slice(0, 12).map((x) => { const isOpen = openQuery === x.id; return `<tr><td style="white-space:nowrap;color:var(--muted)">${esc(shortDate(x.ts))}, ${esc(clock(x.ts))}</td><td>${esc(TOOL_NAMES[x.tool] || x.tool)}<div style="font:500 12px/17px var(--mono);color:var(--muted)">${esc(x.surface)}</div></td><td><button class="linkbtn" style="text-align:left;font-size:13px;font-weight:400" data-query="${esc(x.id)}" aria-expanded="${isOpen}">${x.query ? esc(clip(x.query, 140)) : "(no question: a lookup)"}</button><div style="font-size:12px;color:var(--muted)">${isOpen ? "Hide" : "Show what it got back"}</div></td><td>${x.results ? `<span class="status good">${x.results} found</span>` : '<span class="status warn">nothing</span>'}</td></tr>${isOpen ? askedDetail(x) : ""}`; }).join("");
+  const rows = qs.slice(0, 12).map((x) => { const isOpen = openQuery === x.id; return `<tr><td style="white-space:nowrap;color:var(--muted)">${esc(shortDate(x.ts))}, ${esc(clock(x.ts))}</td><td>${esc(TOOL_NAMES[x.tool] || x.tool)}<div style="font:500 12px/17px var(--mono);color:var(--muted)">${esc(x.surface)}</div></td><td><button class="linkbtn" style="text-align:left;font-size:13px;font-weight:400" data-query="${esc(x.id)}" aria-expanded="${isOpen}">${x.query ? esc(clip(x.query, 140)) : "(no question: a lookup)"}</button><div style="font-size:12px;color:var(--muted)">${isOpen ? "Hide" : "Show what it got back"}</div></td><td>${x.results ? `<span class="status good">${x.results} match${x.results === 1 ? "" : "es"}</span>` : '<span class="status warn">no matches</span>'}</td></tr>${isOpen ? askedDetail(x) : ""}`; }).join("");
   return `<section><h2>What agents asked · ${qs.length}</h2><div class="panel">
     <div class="panelbody" style="display:flex;gap:6px 18px;flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--line)">
-      <span><b>${Math.round((found / qs.length) * 100)}%</b> found something</span><span style="color:var(--muted)">${byTool}</span><span>${bySurface}</span></div>
+      <span><b>${found} of ${qs.length}</b> lookup${qs.length === 1 ? "" : "s"} found something</span><span style="color:var(--muted)">${byTool}</span><span>${bySurface}</span></div>
     ${again.length ? `<div class="panelbody" style="border-bottom:1px solid var(--line);font-size:13px"><span style="color:var(--muted)">Asked more than once:</span> ${again.map(([k, n]) => `"${esc(clip(k, 80))}" ×${n}`).join(" · ")}</div>` : ""}
-    <div class="tablewrap"><table class="data"><thead><tr><th>When</th><th>Who, and how</th><th>Question</th><th>Result</th></tr></thead><tbody>${rows}</tbody></table></div>
-  </div><p class="note">Click a question to see what the agent got back. Questions that found nothing show where secondnature has nothing to offer yet. Questions you type in a terminal aren't counted.</p></section>`;
+    <div class="tablewrap"><table class="data"><thead><tr><th>When</th><th>Agent, and the tool it used</th><th>What it looked for</th><th>Matches</th></tr></thead><tbody>${rows}</tbody></table></div>
+  </div><p class="note">Click a row to see what the agent got back, one card per match. Getting matches doesn't mean they helped: open one to judge. Questions that found nothing show where secondnature has nothing to offer yet. Questions you type in a terminal aren't counted.</p></section>`;
 }
 /* Settings: this repo's delivery and files, and this Mac's background checks. */
 function settingsView() {
