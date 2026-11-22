@@ -43,6 +43,8 @@ export function readAntigravity(file: string): Session {
   let ts = ""; try { ts = statSync(file).mtime.toISOString(); } catch { /* keep empty */ }
   const paths: string[] = [];
   let pending: { cmd: string } | null = null;
+  /** File reads waiting for their result, which comes in a later step. */
+  let reads: Extract<LogEvent, { k: "file" }>[] = [];
   const usage = { input: 0, output: 0, cacheRead: 0 }; let model = "";
   const turns: { ts: string; input: number; output: number; cacheRead?: number }[] = [];
   const messages: AgentMessage[] = []; let task = "";
@@ -83,8 +85,25 @@ export function readAntigravity(file: string): Session {
         pending = { cmd };
       } else if (/^(view_file|read_file|edit_file|write_to_file|replace_file_content|multi_replace_file_content|create_file)$/.test(name)) {
         const p = pathsIn(a)[0];
-        if (p) events.push({ k: "file", tool: /^(view|read)/.test(name) ? "read" : "edit", path: p, failed: o.status === "ERROR", output: "", ts });
+        if (!p) continue;
+        const read = /^(view|read)/.test(name);
+        const from = a.StartLine ?? a.Offset, to = a.EndLine ?? a.Limit;
+        const ev: Extract<LogEvent, { k: "file" }> = { k: "file", tool: read ? "read" : "edit", path: p, failed: o.status === "ERROR", output: "", ts,
+          ...(read && (from != null || to != null) ? { part: true, range: `${from ?? ""}-${to ?? ""}` } : {}) };
+        events.push(ev);
+        if (read) reads.push(ev);
       }
+    }
+    // A file read's result: the next generic step, "Showing lines 400-480 of 601" then the lines. The transcript keeps only about
+    // 4,000 characters of it, so for a long file the size is a floor, not the whole of what the agent was shown.
+    if (reads.length && o.type === "GENERIC" && !(Array.isArray(o.tool_calls) && o.tool_calls.length) && !/^(?:(?:Created|Completed) At:[^\n]*\n)*Command (exited|output)/i.test(body)) {
+      const shownText = body.replace(/^(?:(?:Created|Completed) At:[^\n]*\n)+/, "");
+      const ev = reads.shift()!;
+      ev.size = shownText.length; ev.output = shownText.slice(0, 400);
+      const lines = shownText.match(/Showing lines (\d+)-(\d+) of (\d+)/);
+      if (lines) { const [f, t, n] = [Number(lines[1]), Number(lines[2]), Number(lines[3])]; if (f > 1 || t < n) { ev.part = true; ev.range = `${f}-${t}`; } else { delete ev.part; delete ev.range; } }
+      if (/^(error|file not found)/i.test(shownText.trim())) ev.failed = true;
+      continue;
     }
     // A command's result: the step after it, with its output and whether it errored.
     if (pending && /COMMAND/.test(o.type) && o.source !== "MODEL") {

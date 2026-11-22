@@ -22,7 +22,7 @@ export function readClaude(file: string): Session {
   let task = "";
   const messages: AgentMessage[] = [];
   // What each tool call asked for, until its result arrives: a shell command, or a file tool and the path it named.
-  const pending = new Map<string, { cmd: string } | { tool: string; path: string; pattern?: string; part?: boolean }>();
+  const pending = new Map<string, { cmd: string } | { tool: string; path: string; pattern?: string; part?: boolean; range?: string }>();
   let cwd = "", clientVersion = "unknown", unknown = 0, branch = "";
   for (const o of parseLines(file, readText)) {
     // New record types are normal. A message without the expected shape means the format changed.
@@ -91,7 +91,7 @@ export function readClaude(file: string): Session {
         if (text) messages.push({ ts, dir: "out", from: null, to: to ? [to] : [], text: stripPrivate(text).slice(0, 2000) });
       }
       const path = x?.type === "tool_use" && FILE_TOOLS.has(x.name) ? x.input?.file_path ?? x.input?.notebook_path ?? x.input?.path ?? x.input?.skill : undefined;
-      if (typeof path === "string" && path) pending.set(x.id, { tool: String(x.name).toLowerCase(), path, ...(typeof x.input?.pattern === "string" ? { pattern: x.input.pattern } : {}), ...(x.input?.offset != null || x.input?.limit != null ? { part: true } : {}) });
+      if (typeof path === "string" && path) pending.set(x.id, { tool: String(x.name).toLowerCase(), path, ...(typeof x.input?.pattern === "string" ? { pattern: x.input.pattern } : {}), ...(x.input?.offset != null || x.input?.limit != null ? { part: true, range: `${x.input?.offset ?? 1}+${x.input?.limit ?? ""}` } : {}) });
     }
   }
   const base: Session = { id: sessionIdOf(file), tool: "claude-code", cwd, clientVersion, events, unknown, branch: branch || undefined, file, usage, turns, ...(model ? { model } : {}), ...(messages.length ? { messages } : {}) };

@@ -6,8 +6,8 @@ export type LogEvent =
   | { k: "agent"; text: string; ts: string }
   /** `output` is cut short; `size` is how many characters the agent was really shown, when the log says. */
   | { k: "cmd"; cmd: string; failed: boolean; output: string; ts: string; stopped?: boolean; size?: number }
-  /** A file read, edit or search through the agent's own tools rather than the shell. `path` is the file or folder it named. `part`: a read of only some lines. */
-  | { k: "file"; tool: string; path: string; pattern?: string; failed: boolean; output: string; ts: string; size?: number; part?: boolean }
+  /** A file read, edit or search through the agent's own tools rather than the shell. `path` is the file or folder it named. `part`: a read of only some lines, `range` which ones ("400-480") when the log says. */
+  | { k: "file"; tool: string; path: string; pattern?: string; failed: boolean; output: string; ts: string; size?: number; part?: boolean; range?: string }
   /** The engineer stopped the agent while it was answering (not a single command: that's a stopped "cmd"). */
   | { k: "interrupt"; ts: string };
 /** One event as a line of plain text, for summaries. */

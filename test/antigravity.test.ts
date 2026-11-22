@@ -54,6 +54,20 @@ describe("Antigravity transcripts", () => {
     expect(s.events.find((e) => e.k === "cmd")).toMatchObject({ cmd: "ls -la" });
     expect(s.cwd).toBe(execFileSync("git", ["-C", root, "rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim());
   });
+  it("records how much of a file the agent was shown, and which lines, from the step after the read", () => {
+    const f = join(tmp(), "antigravity", "brain", "conv-4", ".system_generated", "logs", "transcript.jsonl");
+    const file = join(root, "src", "app.ts");
+    write(f, [
+      { step_index: 0, source: "MODEL", type: "PLANNER_RESPONSE", status: "DONE", tool_calls: [{ name: "read_file", args: { Path: JSON.stringify(file), StartLine: '"400"', EndLine: '"480"' } }] },
+      { step_index: 1, source: "MODEL", type: "GENERIC", status: "DONE", content: "Created At: 2026-11-21T17:17:50Z\nCompleted At: 2026-11-21T17:17:51Z\nShowing lines 400-480 of 601\n400: x" },
+      { step_index: 2, source: "MODEL", type: "PLANNER_RESPONSE", status: "DONE", tool_calls: [{ name: "view_file", args: { AbsolutePath: file } }] },
+      { step_index: 3, source: "MODEL", type: "GENERIC", status: "DONE", content: "Showing lines 1-3 of 3\n1: a\n2: b\n3: c" },
+    ]);
+    const reads = readAntigravity(f).events.filter((e) => e.k === "file");
+    expect(reads[0]).toMatchObject({ part: true, range: "400-480", size: "Showing lines 400-480 of 601\n400: x".length });
+    expect(reads[1]).toMatchObject({ size: "Showing lines 1-3 of 3\n1: a\n2: b\n3: c".length });
+    expect(reads[1]).not.toHaveProperty("part");
+  });
   it("finds the repo from a file the agent read, with no folder given anywhere", () => {
     const f = join(tmp(), "antigravity", "brain", "conv-3", ".system_generated", "logs", "transcript.jsonl");
     write(f, [
