@@ -492,9 +492,11 @@ function wasteMoments(sessions: Session[]): Moment[] {
       if (e.k === "file") {
         endRun();
         const path = shortPath(cwd, abs(cwd, e.path));
-        if (WRITES.test(e.tool)) { reads.delete(path); continue; }
-        if (e.tool !== "read" || e.failed || e.part) continue;
-        const n = (reads.get(path) ?? 0) + 1; reads.set(path, n);
+        if (WRITES.test(e.tool)) { for (const k of [...reads.keys()]) if (k === path || k.startsWith(`${path}:`)) reads.delete(k); continue; }
+        // A part of a file counts as read again only when the same lines are read again.
+        if (e.tool !== "read" || e.failed || (e.part && !e.range)) continue;
+        const rkey = e.part ? `${path}:${e.range}` : path;
+        const n = (reads.get(rkey) ?? 0) + 1; reads.set(rkey, n);
         // The first read is needed; every later one of an unchanged file is the waste.
         if (n >= 2) add(groups.reread, path, { session: s.id, tool: s.tool, ts: e.ts, quote: redact(`read ${path} for the ${n}${n === 2 ? "nd" : n === 3 ? "rd" : "th"} time, unchanged`), tokens: Math.ceil((e.size ?? e.output.length) / 4) });
         if (e.size && e.size > BIG_OUTPUT) add(groups.big_output, `read ${path}`, { session: s.id, tool: s.tool, ts: e.ts, quote: redact(`read ${path}  →  ${Math.round(e.size / 4000)}k tokens`), tokens: Math.ceil((e.size - ENOUGH_OUTPUT) / 4) });
@@ -502,7 +504,7 @@ function wasteMoments(sessions: Session[]): Moment[] {
       }
       if (e.stopped) { endRun(); continue; }
       // A shell command that names a file may change it: the next read of that file is fresh.
-      for (const p of reads.keys()) if (e.cmd.includes(basename(p))) reads.delete(p);
+      for (const p of [...reads.keys()]) if (e.cmd.includes(basename(p.replace(/:[^/:]*$/, "")))) reads.delete(p);
       const key = normCommand(e.cmd);
       if (e.size && e.size > BIG_OUTPUT && key) add(groups.big_output, key, { session: s.id, tool: s.tool, ts: e.ts, quote: shown(e.cmd, e.output).slice(0, 200) + `  (${Math.round(e.size / 4000)}k tokens)`, tokens: Math.ceil((e.size - ENOUGH_OUTPUT) / 4) });
       if (!key || e.failed || BENIGN.test(key)) { endRun(); continue; }

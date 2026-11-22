@@ -8,7 +8,7 @@ import { fakeEmbed, tmp, write } from "./helpers.js";
 const at = (d: number, s = 0) => new Date(Date.UTC(2026, 10, d, 10, 0, s)).toISOString();
 const sess = (id: string, events: LogEvent[]): Session => ({ id, tool: "claude-code", cwd: "/r", clientVersion: "1", unknown: 0, events });
 const find = (sessions: Session[]) => findMoments(sessions, fakeEmbed, { cutoff: 0.9, minSessions: 2 });
-const read = (path: string, size = 2000, d = 1, part = false): LogEvent => ({ k: "file", tool: "read", path, failed: false, output: "x", ts: at(d), size, ...(part ? { part } : {}) });
+const read = (path: string, size = 2000, d = 1, part = false, range?: string): LogEvent => ({ k: "file", tool: "read", path, failed: false, output: "x", ts: at(d), size, ...(part ? { part } : {}), ...(range ? { range } : {}) });
 const edit = (path: string, d = 1): LogEvent => ({ k: "file", tool: "edit", path, failed: false, output: "", ts: at(d) });
 const cmd = (c: string, size = 100, d = 1, failed = false): LogEvent => ({ k: "cmd", cmd: c, failed, output: "ok", ts: at(d), size });
 const of = (m: { signal: string }[], s: string) => m.filter((x) => x.signal === s);
@@ -27,7 +27,7 @@ describe("Claude Code reader: how much output the agent was shown", () => {
     // stdout repeats the tool result, so it isn't counted twice; the saved output stays cut short.
     expect(s.events[1]).toMatchObject({ k: "cmd", size: huge.length });
     expect((s.events[1] as { output: string }).output.length).toBeLessThanOrEqual(2000);
-    expect(s.events[2]).toMatchObject({ k: "file", size: 10, part: true });
+    expect(s.events[2]).toMatchObject({ k: "file", size: 10, part: true, range: "10+20" });
   });
 });
 
@@ -49,6 +49,10 @@ describe("token waste", () => {
     // Reading separate parts of a file reads each part once; one re-read in one session is ordinary.
     expect(of(await find([sess("a", [read("/r/a.ts", 100, 1, true), read("/r/a.ts", 100, 1, true), read("/r/a.ts", 100, 1, true)])]), "reread")).toHaveLength(0);
     expect(of(await find([sess("a", [read("/r/a.ts"), read("/r/a.ts")])]), "reread")).toHaveLength(0);
+    // The same lines read again, three times in a session, is re-reading; different lines are not.
+    const same = [read("/r/a.ts", 400, 1, true, "10+20"), read("/r/a.ts", 400, 1, true, "10+20"), read("/r/a.ts", 400, 1, true, "10+20")];
+    expect(of(await find([sess("a", same)]), "reread")[0]!.wasted).toBe(200);
+    expect(of(await find([sess("a", [read("/r/a.ts", 400, 1, true, "1+20"), read("/r/a.ts", 400, 1, true, "21+20"), read("/r/a.ts", 400, 1, true, "41+20")])]), "reread")).toHaveLength(0);
     // The same one re-read in two sessions is a habit.
     expect(of(await find([sess("a", [read("/r/a.ts"), read("/r/a.ts")]), sess("b", [read("/r/a.ts", 2000, 2), read("/r/a.ts", 2000, 2)])]), "reread")).toHaveLength(1);
   });
