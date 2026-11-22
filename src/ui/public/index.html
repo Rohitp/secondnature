@@ -430,12 +430,13 @@ function memorySection() {
   </section>`;
 }
 /* Changes secondnature proposes to files agents read: ask-first rules, new skills, edits to CLAUDE.md. Nothing is written until Apply. */
-const PROP_KIND = { guard: "Ask-first rule", skill: "New skill", instruction: "Instruction edit" };
+const PROP_KIND = { guard: "Ask-first rule", skill: "New skill", instruction: "Instruction edit", trim: "Output trim" };
 let proposing = false;
 function propPreview(p) {
   if (p.kind === "guard") return `Adds <code>${esc(p.payload.rule)}</code> to the "ask" list in <code>.claude/settings.local.json</code>.`;
   const pre = (t) => `<pre class="diff">${t}</pre>`;
   if (p.kind === "skill") return pre(esc(p.payload.markdown));
+  if (p.kind === "trim") return `${p.payload.family === "git" ? "" : "Writes <code>.muninn/bin/trim</code> and keeps"} the lesson: ${esc(p.payload.lesson)}`.replace(/^ the lesson/, "Keeps the lesson");
   const lines = [];
   if (p.payload.find) lines.push(...String(p.payload.find).split("\n").map((l) => `<span class="minus">- ${esc(l)}</span>`));
   if (p.payload.text) lines.push(...String(p.payload.text).split("\n").map((l) => `<span class="plus">+ ${esc(l)}</span>`));

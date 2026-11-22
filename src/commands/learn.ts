@@ -87,10 +87,12 @@ export async function learn(opts: { allRepos?: boolean; auto?: boolean; noReview
       const { repoRoot } = await import("../deliver/local-file.js");
       let guards = 0;
       for (const g of p.guardProposals(repo, sessions, await repoRoot(db, repo))) if (await p.propose(db, g)) guards++;
+      let trims = 0;
+      for (const t of p.trimProposals(repo, sessions)) if (await p.propose(db, t)) trims++;
       const skillRunner = writer ? pickRunner("background") : null;
       const skills = await p.proposeSkills(db, repo, sessions, skillRunner);
       await saveUsage(db, skillRunner, "skill drafts");
-      if (guards || skills) notes.push(`Proposed ${[guards ? `${guards} "ask first" rule(s)` : "", skills ? `${skills} skill(s)` : ""].filter(Boolean).join(" and ")}. Apply or dismiss them in muninn ui.`);
+      if (guards || skills || trims) notes.push(`Proposed ${[guards ? `${guards} "ask first" rule(s)` : "", skills ? `${skills} skill(s)` : "", trims ? `${trims} output trim(s)` : ""].filter(Boolean).join(" and ")}. Apply or dismiss them in muninn ui or with "muninn changes".`);
     } catch (e) { notes.push(`Couldn't look for changes to propose: ${e instanceof Error ? e.message : String(e)}`); }
     if (!opts.auto) {
       if (folded) notes.push(`Folded ${folded} duplicate suggestion(s) into the lesson they repeat.`);

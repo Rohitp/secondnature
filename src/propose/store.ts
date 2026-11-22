@@ -9,9 +9,10 @@ import { keepOutOfGit, repoRoot } from "../deliver/local-file.js";
  *   guard        an "ask first" permission rule, from commands you keep stopping
  *   skill        a new skill, from steps that repeat across sessions
  *   instruction  an edit to CLAUDE.md, AGENTS.md or a skill, from what your sessions show
+ *   trim         a script that shows agents only what matters from a command's output, and a lesson to use it
  * Nothing is written until you apply it, and an applied change can be undone.
  */
-export type Kind = "guard" | "skill" | "instruction";
+export type Kind = "guard" | "skill" | "instruction" | "trim";
 export type Evidence = { session: string; tool: string; ts: string; quote: string };
 export type Proposal = {
   id: string; repo_id: string | null; kind: Kind; key: string; title: string; why: string;
@@ -25,6 +26,10 @@ export type Change = { file: string; after: string | null; exclude?: { root: str
 export type Applier = (p: Proposal, root: string | null) => Change[] | string;
 const appliers: Partial<Record<Kind, Applier>> = {};
 export const registerApplier = (k: Kind, a: Applier) => { appliers[k] = a; };
+/** What else a kind does once its files are written (keep a lesson), and how to take that back on undo. */
+export type After = { applied: (db: Client, p: Proposal) => Promise<Record<string, unknown>>; undone: (db: Client, p: Proposal, extra: Record<string, unknown> | undefined) => Promise<void> };
+const afters: Partial<Record<Kind, After>> = {};
+export const registerAfter = (k: Kind, a: After) => { afters[k] = a; };
 
 const row = (r: Record<string, unknown>): Proposal => ({
   id: String(r.id), repo_id: r.repo_id ? String(r.repo_id) : null, kind: String(r.kind) as Kind, key: String(r.key), title: String(r.title), why: String(r.why),
@@ -80,7 +85,9 @@ export async function apply(db: Client, id: string): Promise<{ files: string[] }
     else { mkdirSync(dirname(c.file), { recursive: true }); writeFileSync(c.file, c.after); }
     if (c.exclude) { try { keepOutOfGit(c.exclude.root, c.exclude.path, "a change you applied for this machine only"); } catch { /* not a git repo */ } }
   }
-  await db.execute({ sql: "UPDATE proposals SET status='applied', decided_at=?, applied=? WHERE id=?", args: [new Date().toISOString(), JSON.stringify(record), id] });
+  const extra = afters[p.kind] ? await afters[p.kind]!.applied(db, p) : null;
+  const payload = extra ? { ...p.payload, after: extra } : p.payload;
+  await db.execute({ sql: "UPDATE proposals SET status='applied', decided_at=?, applied=?, payload=? WHERE id=?", args: [new Date().toISOString(), JSON.stringify(record), JSON.stringify(payload), id] });
   return { files: changes.map((c) => c.file) };
 }
 
@@ -96,6 +103,12 @@ export async function undo(db: Client, id: string): Promise<void> {
   for (const c of record) {
     if (c.before === null) { if (existsSync(c.file)) rmSync(c.file); }
     else writeFileSync(c.file, c.before);
+  }
+  const p = await getProposal(db, id);
+  if (p && afters[p.kind]) {
+    await afters[p.kind]!.undone(db, p, p.payload.after as Record<string, unknown> | undefined);
+    const { after: _, ...rest } = p.payload;
+    await db.execute({ sql: "UPDATE proposals SET payload=? WHERE id=?", args: [JSON.stringify(rest), id] });
   }
   await db.execute({ sql: "UPDATE proposals SET status='proposed', decided_at=NULL, applied=NULL WHERE id=?", args: [id] });
 }
