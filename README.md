@@ -31,6 +31,17 @@ It also proposes changes to what your agents read, each one waiting for you to a
 - **Ask-first rules.** A command you keep stopping before it runs (say `git push --force`) becomes a rule that makes Claude Code ask you first, in every mode including auto mode. It's saved in the repo's `.claude/settings.local.json`, on this machine only.
 - **Skills.** The same steps run in the same order across sessions become a drafted Claude Code skill, so the agent follows them in one go.
 - **Edits to CLAUDE.md, AGENTS.md and skills.** On request, your Claude reviews those files against your sessions and proposes a few exact edits.
+- **Output trims.** A test, build, lint or install command that keeps showing agents far more output than they need becomes a short script, `.muninn/bin/trim`, and a lesson to run the command through it. The script passes the exit code through, shows every error, failure and warning line and the last lines, shows short output whole, and keeps the full output in `.muninn/out/`. muninn checks the script against those rules before proposing it. For git output it proposes a lesson only.
+
+## Proof that it helped
+
+- **Where tokens go.** `muninn insights` lists the commands and file reads that showed agents the most output: runs, tokens, repeats, whether the agent used it, and an estimated cost that counts the prompt cache re-reading it on every later turn.
+- **What each fix saved.** `muninn report` compares an applied trim's output per run before and after, in tokens and money, and says when agents skip it or keep opening the full output anyway.
+- **Which lessons worked.** `muninn report` opens with one line ("12 kept. 9 worked. 2 came back. 1 too early to tell."), counts a lesson as worked only after 3 sessions since it was kept, and flags stale lessons: ones naming a file or script that's gone, or that agents were told and the problem came back anyway. `muninn report --page` writes the same as one HTML page to send someone, with its method and its misses.
+
+## Lessons for your team
+
+`muninn share` puts a repo's kept lessons in the repo, so they're reviewed in pull requests like code: `.muninn/lessons.md`, plus the same short list in CLAUDE.md, AGENTS.md, `.github/copilot-instructions.md`, a Cursor rule and an Antigravity rule. A teammate's agents read them from those files; a teammate who uses muninn gets them kept and measured with `muninn share pull` (or the next `muninn learn`).
 
 ## Teams of agents and long autonomous runs
 
@@ -130,7 +141,9 @@ After that you don't need any commands. muninn checks for new lessons on its own
 | `muninn pr [--apply]` | Write the "why" for this branch's pull request |
 | `muninn insights` | Your week with coding agents |
 | `muninn runs` | Workflow runs: subagents, agent teams and swarms, with roles, handoffs and cost (`--all` for single sessions too) |
-| `muninn report` | Whether kept lessons worked, including lessons for one role in a team of agents |
+| `muninn report` | Whether kept lessons and output trims worked, including lessons for one role in a team of agents |
+| `muninn report --page [file]` | The same as one HTML page to send someone |
+| `muninn share` / `share pull` / `share off` | Put this repo's lessons in the repo for your team, in each tool's file |
 | `muninn schedule on` / `off` | A macOS background job that checks for lessons every few hours |
 | `muninn ignore-repo [name]` | Leave a repo alone: not listed, scanned or told anything (`--undo` to reverse) |
 | `muninn status` | Check everything is working |
