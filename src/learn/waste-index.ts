@@ -55,7 +55,17 @@ export function outputCost(s: Session, ts: string, tokens: number): number | nul
   return price ? (tokens * price.input + tokens * turnsAfter(s, ts) * (price.cacheRead ?? price.input / 10)) / 1e6 : null;
 }
 
-const short = (cwd: string, p: string) => { const r = relative(cwd, p); return r && !r.startsWith("..") && !isAbsolute(r) ? r : p; };
+/**
+ * A file's name for people: relative to the repo when it's in it. Outside it, Claude Code's copies of long tool
+ * output get a plain name (they're the same output read a second time, not a file of yours), and home is "~".
+ */
+export function short(cwd: string, p: string): string {
+  const r = relative(cwd, p);
+  if (r && !r.startsWith("..") && !isAbsolute(r)) return r;
+  if (/\/\.claude\/projects\/[^/]+\/[^/]+\/tool-results\//.test(p)) return "a long tool output Claude Code saved to a file";
+  const home = process.env.HOME;
+  return home && p.startsWith(home + "/") ? `~${p.slice(home.length)}` : p;
+}
 
 /** Below this many tokens a run isn't worth indexing: small outputs aren't where waste is. */
 export const INDEX_MIN_TOKENS = 500;
@@ -74,7 +84,10 @@ export function wasteIndex(sessions: Session[], since = ""): WasteRow[] {
       if (tokens < INDEX_MIN_TOKENS) return;
       const key = e.k === "cmd" ? normCommand(e.cmd) : `read ${short(cwd, e.path)}`;
       if (!key) return;
-      const r: Acc = rows.get(key) ?? { key, kind: e.k === "cmd" ? "command" : "read", example: e.k === "cmd" ? e.cmd.replace(/\s+/g, " ").slice(0, 200) : short(cwd, e.path), runs: 0, sessions: 0, tokens: 0, avgTokens: 0, maxTokens: 0, repeated: 0, used: null, judged: 0, costUsd: null, tools: [], last: "", sessionSet: new Set(), toolSet: new Set(), cost: 0, priced: false };
+      // The example is the shortest real run, so the line people read is a whole command, not a cut-off one.
+      const ex = e.k === "cmd" ? e.cmd.replace(/^\/bin\/(ba|z)?sh\s+-l?c\s+/, "").replace(/^\s*cd\s+\S+\s*(&&|;)\s*/, "").replace(/\s+/g, " ").trim().slice(0, 200) : short(cwd, e.path);
+      const r: Acc = rows.get(key) ?? { key, kind: e.k === "cmd" ? "command" : "read", example: ex, runs: 0, sessions: 0, tokens: 0, avgTokens: 0, maxTokens: 0, repeated: 0, used: null, judged: 0, costUsd: null, tools: [], last: "", sessionSet: new Set(), toolSet: new Set(), cost: 0, priced: false };
+      if (ex.length < r.example.length) r.example = ex;
       r.runs++; r.tokens += tokens; r.maxTokens = Math.max(r.maxTokens, tokens);
       r.sessionSet.add(s.id); r.toolSet.add(s.tool); if (e.ts > r.last) r.last = e.ts;
       const before = prior.get(key) ?? [];

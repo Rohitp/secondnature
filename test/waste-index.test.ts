@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { distinctive, wasteIndex } from "../src/learn/waste-index.js";
+import { distinctive, short, wasteIndex } from "../src/learn/waste-index.js";
 import type { LogEvent, Session } from "../src/logs/types.js";
 
 const at = (m: number) => new Date(Date.UTC(2026, 10, 20, 10, m)).toISOString();
@@ -30,5 +30,13 @@ describe("waste index", () => {
   });
   it("picks specific words from output, not common ones or the command's own", () => {
     expect(distinctive("FAIL tests passed computeTotals src/app/thing.ts", "jest computeTotals")).toEqual(["src/app/thing.ts"]);
+  });
+  it("names things plainly: the shortest real command without a leading cd, and Claude Code's saved outputs", () => {
+    const out = "x".repeat(8000);
+    const run = (cmd: string): LogEvent => ({ k: "cmd", cmd, failed: false, output: out, ts: at(1), size: out.length });
+    const [row] = wasteIndex([sess("a", [run("cd /tmp/work && cat src/a.ts src/b.ts"), run("cat src/c.ts src/d.ts")])]);
+    expect(row!.example).toBe("cat src/a.ts src/b.ts");
+    expect(short("/r", "/Users/me/.claude/projects/-r/abc-123/tool-results/x.txt")).toBe("a long tool output Claude Code saved to a file");
+    expect(short("/r", "/r/src/a.ts")).toBe("src/a.ts");
   });
 });

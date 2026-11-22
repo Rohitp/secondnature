@@ -1,0 +1,10 @@
+---
+description: Team lessons kept with muninn for this repo
+alwaysApply: true
+---
+
+# Team lessons
+
+Kept with muninn from this team's coding sessions. Change them by editing .muninn/lessons.md in a pull request, or with muninn; this part is rewritten by `muninn share`.
+
+- Put each feature on its own branch and merge it into `main` through a GitHub pull request, not by committing directly to `main`.

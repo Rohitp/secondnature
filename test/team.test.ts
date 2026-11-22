@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { cursorRules } from "../src/deliver/cursor.js";
 import { deliver } from "../src/deliver/hook.js";
-import { importTeam, parseTeamFile, share, TEAM_FILE, teamFile, unshare } from "../src/deliver/team.js";
+import { ignoredBy, importTeam, letThrough, parseTeamFile, share, TEAM_FILE, teamFile, unshare } from "../src/deliver/team.js";
 import { repoIdentity } from "../src/repo/identity.js";
 import { openDb } from "../src/store/db.js";
 import { createLesson, decide, ensureRepo, listLessons } from "../src/store/lessons.js";
@@ -68,5 +68,17 @@ describe("team lessons in the repo", () => {
     expect(await deliver(db, "codex", { hook_event_name: "SessionStart", source: "startup", session_id: "s2", cwd: root })).toContain("Use pnpm");
     // muninn's own Cursor rule leaves it out, since the team rule has it.
     expect((await cursorRules(db, repo, root))[0]!.body).not.toContain("Use pnpm");
+  });
+  it("says when git ignores the shared copy, and what to put in .gitignore to keep it", async () => {
+    await lesson("Use pnpm, not npm.");
+    writeFileSync(join(root, ".gitignore"), "node_modules/\n.muninn/\n");
+    const r = await share(await openDb(), repo, ["cursor"]);
+    expect(r.ignored).toMatchObject({ line: 2, pattern: ".muninn/" });
+    // A "!" line can't bring back a file in an ignored folder: ignore the folder's contents instead.
+    expect(letThrough(".muninn/")).toEqual([".muninn/*", `!${TEAM_FILE}`]);
+    writeFileSync(join(root, ".gitignore"), `node_modules/\n${letThrough(".muninn/").join("\n")}\n`);
+    expect(ignoredBy(root, TEAM_FILE)).toBeNull();
+    expect(ignoredBy(root, ".muninn/out/x.log")).not.toBeNull();
+    expect(letThrough("*.md")).toEqual([`!${TEAM_FILE}`]);
   });
 });

@@ -1,4 +1,5 @@
 import type { Client } from "@libsql/client";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createLesson, decide } from "../store/lessons.js";
@@ -68,8 +69,28 @@ function cursorFile(ls: TeamLesson[]): string {
   return `---\ndescription: Team lessons kept with muninn for this repo\nalwaysApply: true\n---\n\n# Team lessons\n\n${HEADER}\n\n${ls.map(line).join("\n")}\n`;
 }
 
+/**
+ * Whether git ignores a file in the repo, and the rule that does it ("/repo/.gitignore", line 7, ".muninn/"),
+ * so muninn can say why the shared copy won't be committed and how to let it through.
+ */
+export function ignoredBy(root: string, rel: string): { file: string; line: number; pattern: string } | null {
+  try {
+    const out = execFileSync("git", ["-C", root, "check-ignore", "-v", "--no-index", rel], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    const m = out.match(/^(.*?):(\d+):(.*?)\t/);
+    // With -v, git also prints a "!" rule that lets the file through: that means it isn't ignored.
+    return m && !m[3]!.startsWith("!") ? { file: m[1]!, line: Number(m[2]), pattern: m[3]! } : null;
+  } catch { return null; } // exit code 1: not ignored (or not a git repo)
+}
+/** What to put in .gitignore so git keeps the shared copy, given the rule that ignores it. */
+export function letThrough(pattern: string): string[] {
+  const dir = pattern.replace(/^\//, "").replace(/\/$/, "");
+  // A whole folder ignored (".muninn/") hides everything in it, even files a later "!" line names: ignore what's in it instead.
+  if (dir === ".muninn" || dir === ".muninn/*") return [`${pattern.startsWith("/") ? "/" : ""}.muninn/*`, `!${TEAM_FILE}`];
+  return [`!${TEAM_FILE}`];
+}
+
 /** Writes the shared copy and each tool's file. Returns the files changed, relative to the repo. */
-export async function share(db: Client, repo: string, targets: Target[] = TARGETS): Promise<{ root: string; files: string[]; lessons: number }> {
+export async function share(db: Client, repo: string, targets: Target[] = TARGETS): Promise<{ root: string; files: string[]; lessons: number; ignored: { file: string; line: number; pattern: string } | null }> {
   const root = await repoRoot(db, repo);
   if (!root) throw new Error("Couldn't find this repo's folder on this machine.");
   const ls = await teamLessons(db, repo);
@@ -88,7 +109,7 @@ export async function share(db: Client, repo: string, targets: Target[] = TARGET
     else block(PATHS[t]);
   }
   await db.execute({ sql: "INSERT OR REPLACE INTO meta (key,value) VALUES (?,?)", args: [meta(repo), JSON.stringify({ ids: ls.map((l) => l.id), targets })] });
-  return { root, files: changed, lessons: ls.length };
+  return { root, files: changed, lessons: ls.length, ignored: ignoredBy(root, TEAM_FILE) };
 }
 
 /** Takes muninn's parts out of every file again, and forgets the repo is shared. The shared copy is left for git to remove. */

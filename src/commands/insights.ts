@@ -117,7 +117,8 @@ export function insightsText(i: Insights): string {
       const bits = [`${r.runs} run(s), about ${k(r.tokens)} tokens${r.costUsd != null ? ` ($${r.costUsd.toFixed(2)} with cache re-reads)` : ""}`];
       if (r.repeated) bits.push(`${r.repeated} repeated earlier output`);
       if (r.judged >= 2 && r.used != null) bits.push(`agent used it ${r.used} of ${r.judged} time(s)`);
-      out.push(`  ${r.kind === "read" ? r.key : "`" + r.key + "`"}: ${bits.join("; ")}`);
+      const name = r.kind === "read" ? r.key : "`" + (r.example.length > 100 ? r.example.slice(0, 99) + "…" : r.example) + "`";
+      out.push(`  ${name}: ${bits.join("; ")}`);
     }
   }
   out.push("", "Lessons");
