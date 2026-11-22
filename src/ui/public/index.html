@@ -1168,13 +1168,16 @@ const SURFACE_SAYS = {
 const FOUND_KIND = { lesson: "Lesson", note: "Note", session: "Past session", plan: "Plan", run: "Run", handoff: "Where a session left off", link: "Links", repo: "Repo" };
 /* Search answers come as "[n] KIND · repo · branch · date[ · id x]\ntext" blocks. Split them so each match reads as its own card. */
 const MATCH_KIND = { LESSON: "Lesson", NOTE: "Note", DECISION: "Decision", DONE: "Finished work", GOAL: "Branch goal", SESSION: "Past session", HANDOFF: "Where a session left off" };
-const PER_MATCH = 1500, KEPT_CHARS = 8000; // what search_history sends per match, and what secondnature keeps of each answer
+// Before 22 Nov, search sent each match cut at 1,500 characters and the page kept 8,000 of each answer; older rows show those cuts.
+const OLD_PER_MATCH = 1500, OLD_KEPT = 8000, KEPT_CHARS = 48000;
 function splitMatches(answer) {
-  const parts = String(answer).split(/\n\n(?=\[\d+\] [A-Z]+ · )/);
-  if (!/^\[\d+\] [A-Z]+ · /.test(parts[0] || "")) return null;
+  const HEAD = /^(?:\[(\d+)\] )?([A-Z]+) · /;
+  // A search starts with a line saying how many matches; opened matches are separated by blank lines.
+  const parts = String(answer).replace(/^\d+ match\(es\)[^\n]*\n/, "").split(/\n\n?(?=(?:\[\d+\] )?(?:LESSON|NOTE|DECISION|DONE|GOAL|SESSION|HANDOFF) · )/);
+  if (!HEAD.test(parts[0] || "")) return null;
   return parts.map((p) => {
     const nl = p.indexOf("\n"); const head = nl < 0 ? p : p.slice(0, nl); const body = nl < 0 ? "" : p.slice(nl + 1);
-    const m = head.match(/^\[(\d+)\] ([A-Z]+) · (.*)$/); const bits = m[3].split(" · ").filter((b) => !b.startsWith("id "));
+    const m = head.match(/^(?:\[(\d+)\] )?([A-Z]+) · (.*)$/); const bits = m[3].split(" · ").filter((b) => !b.startsWith("id "));
     const date = /^\d{4}-\d{2}-\d{2}$/.test(bits[bits.length - 1] || "") ? bits.pop() : null;
     return { n: +m[1], kind: m[2], repo: bits[0] || null, branch: bits[1] || null, date, body };
   });
@@ -1196,34 +1199,43 @@ function mdLite(s) {
 }
 // A cut the reader should see: where the text stops, and why.
 const cutMark = (why) => `<div class="cutmark" title="${esc(why)}">✂ ${esc(why)}</div>`;
-function matchBody(k, last, storeCut) {
+function matchBody(k, last, storeCut, x_len) {
   let body = k.body;
   // Plans repeat their kind and branch in front of the text ("DONE on m5/x: …"); the card already says both.
   if (["DONE", "GOAL", "DECISION"].includes(k.kind)) body = body.replace(/^[A-Z]+ on [^:]+: /, "");
-  const sentCut = body.length >= PER_MATCH && !(last && storeCut);
+  const sentCut = body.length === OLD_PER_MATCH && !(last && storeCut);
+  const preview = body.length <= 200 && body.endsWith("…") && !body.includes("\n");
   const render = (t) => {
     // Session excerpts are turns: ENGINEER: / AGENT:. A " … " inside means search kept the start and end and dropped the middle.
-    const pieces = t.split(/ … /);
-    return pieces.map((p, i) => mdLite(p) + (i < pieces.length - 1 ? cutMark("Middle left out: search kept the start and end of this part") : "")).join("");
+    // Cuts made when the session was stored: " … " before 22 Nov, "[… 1,234 characters left out …]" since. And where an opened match was cut.
+    const pieces = t.split(/ … |\n\[… ([\d,]+) characters left out …\]\n|\n\[Cut here: ([\d,]+) more characters not shown\.\]/);
+    let html = "";
+    for (let i = 0; i < pieces.length; i += 3) {
+      html += mdLite(pieces[i] ?? "");
+      if (i + 1 < pieces.length) html += pieces[i + 1] ? cutMark(`Middle left out when the session was stored: ${pieces[i + 1]} characters`)
+        : pieces[i + 2] ? cutMark(`The agent wasn't shown the last ${pieces[i + 2]} characters of this match`)
+        : cutMark("Middle left out when the session was stored (before 22 Nov, when long replies lost their middle)");
+    }
+    return html;
   };
   const turns = k.kind === "SESSION" ? body.split(/\n(?=(?:ENGINEER|AGENT): )/) : [body];
   const html = turns.map((t) => {
     const who = t.match(/^(ENGINEER|AGENT): /);
     return who ? `<div class="turn"><div class="who">${who[1] === "ENGINEER" ? "You" : "Agent"}</div><div>${render(t.slice(who[0].length))}</div></div>` : render(t);
   }).join("");
-  return html + (sentCut ? cutMark(`The agent saw only the first ${PER_MATCH.toLocaleString()} characters of this match`) : "")
-    + (last && storeCut ? cutMark(`secondnature kept only the first ${KEPT_CHARS.toLocaleString()} characters of this answer, so the rest isn't shown. The agent saw more.`) : "");
+  return html + (preview ? '<div class="note" style="margin:6px 0 0">A one-line preview. The agent saw only this, and could open the match in full with open_results.</div>' : "") + (sentCut ? cutMark(`The agent saw only the first ${OLD_PER_MATCH.toLocaleString()} characters of this match`) : "")
+    + (last && storeCut ? cutMark(`secondnature kept only the first ${x_len.toLocaleString()} characters of this answer, so the rest isn't shown. The agent saw more.`) : "");
 }
 function answerView(x) {
   const matches = splitMatches(x.answer);
   const raw = `<pre style="white-space:pre-wrap;font:12px/1.6 var(--mono);margin:4px 0 0;max-height:420px;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px 14px">${esc(x.answer)}</pre>`;
   if (!matches) return raw;
-  const storeCut = x.answer.length >= KEPT_CHARS;
+  const storeCut = x.answer.length === OLD_KEPT || x.answer.length >= KEPT_CHARS;
   const hidden = x.results - matches.length;
   const cards = matches.map((k, i) => `<details class="match"${i < 2 ? " open" : ""}><summary><span class="kind">${esc(MATCH_KIND[k.kind] || k.kind)}</span>
       <span style="color:var(--muted);font-size:12px">${[k.branch ? `on ${esc(k.branch)}` : null, k.repo && k.repo !== short(x.repo) ? `in ${esc(k.repo)}` : null, k.date ? esc(shortDate(k.date)) : null].filter(Boolean).join(" · ")}</span>
       <span class="peek">${esc(clip(k.body.replace(/^[A-Z]+ on [^:]+: /, "").replace(/^(ENGINEER|AGENT): /, ""), 110))}</span></summary>
-      <div class="matchbody">${matchBody(k, i === matches.length - 1, storeCut)}</div></details>`).join("");
+      <div class="matchbody">${matchBody(k, i === matches.length - 1, storeCut, x.answer.length)}</div></details>`).join("");
   return `<p style="margin:4px 0 8px;font-size:13px">${matches.length} match${matches.length === 1 ? "" : "es"} shown here, best first.${hidden > 0 ? ` ${hidden} more ${hidden === 1 ? "was" : "were"} found but ${storeCut ? "didn't fit in what secondnature kept of the answer" : "aren't in the stored answer"}.` : ""} Click a match to open or close it.</p>
     ${cards}<details style="margin-top:10px"><summary style="font-size:12px;color:var(--muted);cursor:pointer">Exact text the agent received</summary>${raw}</details>`;
 }
