@@ -3,11 +3,12 @@ import { repoIdentity } from "../repo/identity.js";
 import { pickRunner, saveUsage } from "../learn/writer.js";
 import { apply, dismiss, listProposals, proposeInstructions, undo, type Proposal } from "../propose/index.js";
 
-const KIND: Record<string, string> = { guard: "Ask-first rule", skill: "New skill", instruction: "Instruction edit" };
+const KIND: Record<string, string> = { guard: "Ask-first rule", skill: "New skill", instruction: "Instruction edit", trim: "Output trim" };
 /** What a change will write, short enough for a terminal. */
 export function preview(p: Proposal): string {
   if (p.kind === "guard") return `adds "${p.payload.rule}" to permissions.${p.payload.list} in .claude/settings.local.json`;
   if (p.kind === "skill") return String(p.payload.markdown).split("\n").slice(0, 12).join("\n");
+  if (p.kind === "trim") return `${p.payload.family === "git" ? "" : "writes .muninn/bin/trim and "}keeps the lesson: ${p.payload.lesson}`;
   const e = p.payload;
   return [e.find ? `- ${String(e.find).split("\n").join("\n- ")}` : "", e.text ? `+ ${String(e.text).split("\n").join("\n+ ")}` : ""].filter(Boolean).join("\n");
 }
