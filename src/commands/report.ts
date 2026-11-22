@@ -81,7 +81,24 @@ export async function reportData(db: Client, repo: string | null, sessions?: Ses
 export async function report(args: string[]) {
   const db = await openDb();
   const repo = args.includes("--all") ? null : repoIdentity(process.cwd());
-  const r = await reportData(db, repo);
+  const sessions = (await import("../logs/discover.js")).scanLogs().sessions;
+  const { proofData, proofHtml, headline } = await import("../learn/proof.js");
+  const proof = await proofData(db, repo, sessions);
+  // muninn report --page [file]: the proof as one HTML page to send someone.
+  const pageAt = args.indexOf("--page");
+  if (pageAt >= 0) {
+    const { home } = await import("../config.js");
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    const { join, resolve } = await import("node:path");
+    const given = args[pageAt + 1] && !args[pageAt + 1]!.startsWith("--") ? resolve(args[pageAt + 1]!) : null;
+    const file = given ?? join(home(), "reports", `${(repo ?? "all-repos").split("/").pop()}-${proof.at.slice(0, 10)}.html`);
+    mkdirSync(join(file, ".."), { recursive: true });
+    writeFileSync(file, proofHtml(proof));
+    console.log(`${headline(proof)}\nWrote the one-page report to ${file}. It has no scripts or outside files, so you can send it as is.`);
+    return;
+  }
+  const r = proof.report;
+  if (proof.lessons.length) console.log(`${headline(proof)}\n`);
   if (r.fixes.length) {
     console.log("Output trims you applied, before and after:");
     for (const f of r.fixes) console.log(`\n${f.id.slice(0, 8)}  ${f.cmd} (${f.family}), applied ${f.appliedAt.slice(0, 10)}. ${f.before.runs} run(s) before, ${f.after.runs} since.\n  ${f.verdict}`);
@@ -94,6 +111,8 @@ export async function report(args: string[]) {
     console.log(`\n${l.id.slice(0, 8)}  ${l.kind === "note" ? "[note] " : ""}${l.text.length > 110 ? l.text.slice(0, 109) + "…" : l.text}`);
     console.log(`  Kept ${l.keptAt.slice(0, 10)}, ${l.route}. Sent ${l.sent} time(s) in ${l.sentSessions} session(s). Seen in ${l.before} session(s) before you kept it.`);
     console.log(`  ${l.verdict}`);
+    const st = proof.lessons.find((x) => x.id === l.id)?.stale;
+    if (st) console.log(`  Stale: ${st.detail} Retire it with "muninn retire ${l.id.slice(0, 8)}".`);
   }
   if (roles.length) {
     console.log("\nLessons for one role in a team of agents, measured on workflow runs before and since:");

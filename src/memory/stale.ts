@@ -67,9 +67,11 @@ function lines(content: string): { n: number; text: string }[] {
   return out;
 }
 
-/** Checks one repo's instruction files against the repo and its sessions. */
-export function checkRepo(root: string, sessions: Session[]): Flag[] {
-  const flags: Flag[] = [];
+/**
+ * A checker for one repo: why a piece of text names something that's no longer there (a missing path, a make
+ * target or package script that's gone), or null. Used for instruction-file lines and for kept lessons.
+ */
+export function repoChecker(root: string): { problem: (text: string) => { reason: "missing_path" | "missing_command"; detail: string } | null; inRepo: (p: string) => boolean } {
   const make = targets(root); const pkg = scripts(root);
   // A path counts as there if it's at the root or anywhere in the tracked files ("tests/" can mean each package's own).
   let tracked: string[] = [];
@@ -79,6 +81,20 @@ export function checkRepo(root: string, sessions: Session[]): Flag[] {
     const want = p.replace(/\/$/, "");
     return tracked.some((f) => f === want || f.endsWith(`/${want}`) || f.startsWith(`${want}/`) || f.includes(`/${want}/`));
   };
+  const problem = (text: string) => {
+    const { paths, commands } = refsOf(text);
+    const missing = paths.filter((p) => !inRepo(p));
+    if (missing.length) return { reason: "missing_path" as const, detail: `${missing.map((p) => `\`${p}\``).join(", ")} ${missing.length === 1 ? "isn't" : "aren't"} in the repo` };
+    const broken = commands.map((c) => commandProblem(c, make, pkg)).find(Boolean);
+    return broken ? { reason: "missing_command" as const, detail: broken } : null;
+  };
+  return { problem, inRepo };
+}
+
+/** Checks one repo's instruction files against the repo and its sessions. */
+export function checkRepo(root: string, sessions: Session[]): Flag[] {
+  const flags: Flag[] = [];
+  const { problem } = repoChecker(root);
   // What sessions in this repo actually touched: commands run and what agents wrote.
   const hay = sessions.length >= MIN_SESSIONS_FOR_UNUSED
     ? sessions.flatMap((s) => s.events.map((e) => (e.k === "cmd" ? e.cmd : e.k === "agent" ? e.text : ""))).join("\n").toLowerCase()
@@ -89,10 +105,8 @@ export function checkRepo(root: string, sessions: Session[]): Flag[] {
     for (const { n, text } of lines(readFileSync(path, "utf8"))) {
       const { paths, commands } = refsOf(text);
       if (!paths.length && !commands.length) continue;
-      const missing = paths.filter((p) => !inRepo(p));
-      if (missing.length) { flags.push({ file, line: n, text: text.trim(), reason: "missing_path", detail: `${missing.map((p) => `\`${p}\``).join(", ")} ${missing.length === 1 ? "isn't" : "aren't"} in the repo` }); continue; }
-      const broken = commands.map((c) => commandProblem(c, make, pkg)).find(Boolean);
-      if (broken) { flags.push({ file, line: n, text: text.trim(), reason: "missing_command", detail: broken }); continue; }
+      const bad = problem(text);
+      if (bad) { flags.push({ file, line: n, text: text.trim(), ...bad }); continue; }
       if (hay) {
         // Commands are matched on their first two words, paths on their last part, so "make check -j4" or "./core/x" still count.
         const keys = [...commands.map((c) => c.split(/\s+/).slice(0, 2).join(" ")), ...paths.map((p) => p.replace(/\/$/, "").split("/").pop()!)].map((k) => k.toLowerCase());
