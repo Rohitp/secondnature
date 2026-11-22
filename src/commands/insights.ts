@@ -1,5 +1,6 @@
 import type { Client } from "@libsql/client";
 import { effortMoments } from "../learn/signals.js";
+import { wasteIndex, type WasteRow } from "../learn/waste-index.js";
 import { scanLogs } from "../logs/discover.js";
 import type { Session } from "../logs/types.js";
 import { repoIdentity } from "../repo/identity.js";
@@ -17,6 +18,8 @@ const KIND: Record<string, string> = {
 export type Insights = {
   days: number; repo: string | null;
   sessions: { total: number; byTool: Record<string, number>; byRepo: Record<string, number> };
+  /** Where output tokens went, per command and per file read, biggest cost first (top 10). */
+  index: WasteRow[];
   effort: { wastedTokens: number; byKind: { kind: string; label: string; tokens: number; count: number }[]; top: { text: string; tokens: number }[]; stopped: number; interrupted: number };
   lessons: { told: number; toldSessions: number; kept: number; working: number; cameBack: { text: string; verdict: string }[] };
   skills: { name: string; uses: number }[];
@@ -66,6 +69,7 @@ export async function insightsData(db: Client, repo: string | null, days = 7, se
   return {
     days, repo,
     sessions: { total: here.length, byTool, byRepo },
+    index: wasteIndex(here, since).slice(0, 10),
     effort: {
       wastedTokens: moments.reduce((a, m) => a + (m.wasted ?? 0), 0),
       byKind: [...byKind.entries()].map(([kind, v]) => ({ kind, label: KIND[kind] ?? kind, ...v })).sort((a, b) => b.tokens - a.tokens || b.count - a.count),
@@ -107,6 +111,15 @@ export function insightsText(i: Insights): string {
   for (const b of i.effort.byKind.slice(0, 5)) out.push(`  ${b.count} × ${b.label}${b.tokens ? `, about ${k(b.tokens)} tokens` : ""}`);
   for (const t of i.effort.top) out.push(`  Costliest: ${t.text.length > 110 ? t.text.slice(0, 109) + "…" : t.text} (about ${k(t.tokens)} tokens)`);
   if (i.effort.interrupted) out.push(`  You stopped an answer ${i.effort.interrupted} time(s) while it was being written.`);
+  if (i.index.length) {
+    out.push("", "Where output tokens went (biggest first)");
+    for (const r of i.index.slice(0, 6)) {
+      const bits = [`${r.runs} run(s), about ${k(r.tokens)} tokens${r.costUsd != null ? ` ($${r.costUsd.toFixed(2)} with cache re-reads)` : ""}`];
+      if (r.repeated) bits.push(`${r.repeated} repeated earlier output`);
+      if (r.judged >= 2 && r.used != null) bits.push(`agent used it ${r.used} of ${r.judged} time(s)`);
+      out.push(`  ${r.kind === "read" ? r.key : "`" + r.key + "`"}: ${bits.join("; ")}`);
+    }
+  }
   out.push("", "Lessons");
   out.push(`  Told ${i.lessons.told} time(s) in ${i.lessons.toldSessions} session(s). Of ${i.lessons.kept} kept, ${i.lessons.working} were told and haven't come back.`);
   for (const c of i.lessons.cameBack) out.push(`  Came back: "${c.text.slice(0, 90)}${c.text.length > 90 ? "…" : ""}". ${c.verdict}`);
