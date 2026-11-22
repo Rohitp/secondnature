@@ -58,6 +58,11 @@ export async function learn(opts: { allRepos?: boolean; auto?: boolean; noReview
       const n = await checkAndSave(db, repo, sessions);
       if (n) notes.push(`${n} line(s) in CLAUDE.md may be out of date. See them in muninn ui, or run "muninn memory".`);
     } catch { /* a repo muninn can't read shouldn't stop the scan */ }
+    // Lessons a teammate shared in the repo's .muninn/lessons.md: kept here too, so they're told and measured.
+    try {
+      const n = await (await import("../deliver/team.js")).importTeam(db, repo);
+      if (n) notes.push(`Kept ${n} lesson(s) a teammate shared in .muninn/lessons.md.`);
+    } catch { /* a repo muninn can't read shouldn't stop the scan */ }
     const folded = await foldDuplicates(db, repo);
     // Workflow runs: sessions that worked together, with their subagents and roles. Agents sending each other's work back become moments.
     let extra: import("../learn/signals.js").Moment[] = [];

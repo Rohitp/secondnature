@@ -34,6 +34,8 @@ const USAGE = `muninn: lessons that carry across coding sessions
                                 at session start, or whenever relevant
   muninn ui                     Open muninn in your browser
   muninn cursor on|off|sync     Kept lessons as Cursor rules in this repo (on by itself once you use Cursor here)
+  muninn share [pull|off]       Put this repo's lessons in the repo for your team: CLAUDE.md, AGENTS.md, Copilot,
+                                Cursor and Antigravity rules, and .muninn/lessons.md. pull keeps a teammate's
   muninn local-file on|off      Keep always-on lessons in this repo's CLAUDE.local.md (this machine only)
   muninn antigravity on|off     Kept lessons as Antigravity rules in this repo (on by itself once you use it here)
   muninn keywords               Keywords in use, and how many lessons each has
@@ -52,7 +54,34 @@ const USAGE = `muninn: lessons that carry across coding sessions
   muninn export [file]
   muninn purge --yes`;
 
-const CHANGES = new Set(["learn", "review", "add", "edit", "retire", "keep", "reject"]);
+const CHANGES = new Set(["learn", "review", "add", "edit", "retire", "keep", "reject", "share"]);
+
+/**
+ * muninn share [--only claude,agents,copilot,cursor,antigravity]   Write this repo's lessons into the repo, for the team
+ * muninn share pull   Keep lessons a teammate shared in .muninn/lessons.md
+ * muninn share off    Take muninn's team parts out of the repo's files again
+ */
+async function shareCmd(args: string[]) {
+  const [{ openDb }, { repoIdentity }, t, { ensureRepo }] = await Promise.all([import("./store/db.js"), import("./repo/identity.js"), import("./deliver/team.js"), import("./store/lessons.js")]);
+  const db = await openDb();
+  const repo = repoIdentity(process.cwd());
+  if (!repo) { console.error("Run this inside a git repo."); process.exitCode = 1; return; }
+  await ensureRepo(db, repo, process.cwd());
+  const sub = args[0] && !args[0].startsWith("--") ? args[0] : "";
+  if (sub === "off") { const files = await t.unshare(db, repo); console.log(files.length ? `Took muninn's team lessons out of ${files.join(", ")}. ${t.TEAM_FILE} is left for you to remove in git.` : "Nothing to take out."); return; }
+  if (sub === "pull") { const n = await t.importTeam(db, repo); console.log(n ? `Kept ${n} lesson(s) from ${t.TEAM_FILE}. They're told to your agents and measured like your own.` : `No new lessons in ${t.TEAM_FILE}.`); return; }
+  if (sub) { console.error("Usage: muninn share [--only claude,agents,copilot,cursor,antigravity] | share pull | share off"); process.exitCode = 1; return; }
+  const at = args.indexOf("--only");
+  const only = at >= 0 ? String(args[at + 1] ?? "").split(",").map((x) => x.trim()).filter(Boolean) : null;
+  const bad = only?.filter((x) => !(t.TARGETS as string[]).includes(x)) ?? [];
+  if (bad.length) { console.error(`Unknown: ${bad.join(", ")}. Use any of ${t.TARGETS.join(", ")}.`); process.exitCode = 1; return; }
+  const pulled = await t.importTeam(db, repo);
+  const r = await t.share(db, repo, (only as typeof t.TARGETS | null) ?? t.TARGETS);
+  if (pulled) console.log(`Kept ${pulled} lesson(s) a teammate added to ${t.TEAM_FILE} first.`);
+  if (!r.lessons) { console.log("No lessons to share yet: only kept lessons for this repo that are told every session or on a keyword are shared."); return; }
+  console.log(`Shared ${r.lessons} lesson(s). ${r.files.length ? `Changed ${r.files.join(", ")}.` : "The files were already up to date."}`);
+  console.log(`Review the change with "git diff" and commit it. A teammate's agents read the lessons from these files; if they use muninn, "muninn share pull" keeps them so they're measured too.`);
+}
 
 async function cursorCmd(sub: string) {
   const [{ openDb }, { repoIdentity }, c] = await Promise.all([import("./store/db.js"), import("./repo/identity.js"), import("./deliver/cursor.js")]);
@@ -206,6 +235,7 @@ async function main() {
     }
     case "recall": return (await import("./commands/recall.js")).recall(args);
     case "cursor": return cursorCmd(args[0] ?? "");
+    case "share": return shareCmd(args);
     case "local-file": return localFileCmd(args[0] ?? "");
     case "antigravity": return antigravityCmd(args[0] ?? "");
     case "ignore-repo": return ignoreRepoCmd(args);
