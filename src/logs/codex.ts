@@ -23,7 +23,7 @@ export function readCodex(file: string): Session {
       if (it.type === "CommandExecution") {
         const cmd = Array.isArray(it.command) ? it.command.join(" ") : String(it.command ?? "");
         const output = String(it.aggregated_output ?? it.stderr ?? "");
-        items.push({ k: "cmd", cmd, failed: typeof it.exit_code === "number" && it.exit_code !== 0, output: output.slice(-2000), ts });
+        items.push({ k: "cmd", cmd, failed: typeof it.exit_code === "number" && it.exit_code !== 0, output: output.slice(-2000), ts, size: output.length });
       }
     }
   }

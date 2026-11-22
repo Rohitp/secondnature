@@ -68,7 +68,7 @@ export function defaultRoute(l: Pick<Lesson, "text" | "kind" | "signal" | "sugge
   const guess = suggestKeyword(l.text);
   const global = l.suggested_scope === "global";
   if (l.kind === "note") return { route: "keyword", keywords: suggested.length ? suggested : guess ? [guess] : [], global: false };
-  if ((l.signal === "failure_then_fix" || l.signal === "mistake_returned" || l.signal === "loop" || l.signal === "refetch" || l.signal === "stopped" || l.signal === "wrong_path" || l.signal === "big_file") && guess) return { route: "keyword", keywords: [guess], global };
+  if ((l.signal === "failure_then_fix" || l.signal === "mistake_returned" || l.signal === "loop" || l.signal === "refetch" || l.signal === "stopped" || l.signal === "wrong_path" || l.signal === "big_file" || l.signal === "big_output" || l.signal === "reread" || l.signal === "one_by_one") && guess) return { route: "keyword", keywords: [guess], global };
   return { route: "always", keywords: [], global };
 }
 
