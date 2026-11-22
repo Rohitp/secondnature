@@ -1115,7 +1115,7 @@ function activityView() {
     </div>`;
 }
 /* What secondnature told agents this week through its hooks: each session, what it got, and when nothing was sent, why. */
-const OUTCOME = { sent: ["told", "good"], no_match: ["checked, nothing fit", ""], limit: ["held back: over the limit", "caution"], paused: ["paused or set to quiet", "caution"], timeout: ["too slow, skipped", "warn"], unsupported_client: ["tool can't take it", "warn"] };
+const OUTCOME = { sent: ["told", "good"], no_match: ["checked, nothing fit", ""], limit: ["not sent: no room left", "caution"], paused: ["paused or set to quiet", "caution"], timeout: ["too slow, skipped", "warn"], unsupported_client: ["tool can't take it", "warn"] };
 function toldSection() {
   const t = data.told;
   if (!t) return "";
@@ -1127,7 +1127,7 @@ function toldSection() {
     const got = s.told.map(item).join("")
       + (s.fromFile ? `<div style="margin:2px 0;color:var(--muted)">${s.fromFile} lesson${s.fromFile === 1 ? "" : "s"} already in CLAUDE.local.md, which it read itself</div>` : "")
       + s.loops.map((l) => `<div style="margin:2px 0"><span class="status warn">loop warning</span> <code>${esc(clip(l.cmd, 60))}</code> failed ${l.n} times</div>`).join("")
-      + (s.held.length ? `<div style="margin:2px 0"><span class="status caution">held back</span> ${s.held.map((h) => esc(clip(h.text, 60))).join(" · ")}</div>` : "");
+      + (s.held.length ? `<div style="margin:2px 0"><span class="status caution">not sent, no room</span> ${s.held.map((h) => esc(clip(h.text, 60))).join(" · ")}</div>` : "");
     return `<tr><td style="white-space:nowrap;color:var(--muted)">${esc(shortDate(s.start))}, ${esc(clock(s.start))}</td><td>${esc(TOOL_NAMES[s.tool] || s.tool)}<div style="font:500 12px/17px var(--mono);color:var(--muted)">${esc(s.session.slice(0, 8))}</div></td><td>${got || '<span style="color:var(--muted)">Nothing told</span>'}${nothing ? `<div class="note" style="margin:4px 0 0">${esc(nothing)}</div>` : ""}</td></tr>`;
   }).join("");
   const how = (l) => l.how === "always" ? (l.role ? `goes only to agents in the ${l.role} role, and none got it (see Lessons for why)` : "goes to every session, yet none got it")
@@ -1140,6 +1140,7 @@ function toldSection() {
   return `<section><h2>What secondnature told agents · ${t.sessions.length} session${t.sessions.length === 1 ? "" : "s"}</h2>
     ${t.sessions.length ? `<div class="panel">
       <div class="panelbody" style="display:flex;gap:6px 18px;flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--line)"><span style="color:var(--muted)">${total} checks:</span>${strip}</div>
+      ${t.outcomes.limit ? `<div class="panelbody note" style="margin:0;border-bottom:1px solid var(--line)"><b>Not sent: no room left</b> means a lesson fit, but muninn had already added as much as it allows${t.room ? `: ${t.room.lessons} lessons or about ${Math.round(t.room.tokens * 0.75)} words per message, and about ${Math.round(t.room.sessionTokens * 0.75)} words per session` : ""}. The cap keeps lessons from crowding out the agent's own work. Each time a lesson is turned away it counts once, so one lesson in a long session can count many times. Each session below lists which lessons were turned away. If one you need keeps showing up, shorten it, or raise <code>tokensPerSession</code> in <code>~/.muninn/config.json</code>.</div>` : ""}
       <div class="tablewrap"><table class="data"><thead><tr><th>Started</th><th>Who</th><th>What it was told</th></tr></thead><tbody>${rows}</tbody></table></div>
     </div>` : `<ul class="group"><li class="empty">No agent session here was told anything this week. secondnature tells agents through hooks: kept lessons when a session or agent starts, matching ones when a prompt or failed command fits, and where the last session left off.</li></ul>`}
     <p class="note">It checks at every session start, prompt and failed command; "nothing fit" is normal. The branch plan and the look-it-up reminder are shown from 21 Nov on.${t.unplaced ? ` ${t.unplaced} session${t.unplaced === 1 ? "" : "s"} this week couldn't be tied to a repo yet, so they aren't shown.` : ""}</p>

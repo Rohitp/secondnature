@@ -1,4 +1,5 @@
 import type { Client } from "@libsql/client";
+import { settings } from "../config.js";
 
 /**
  * What secondnature told agents through its hooks: each recent session, what it got, and when nothing was sent, why.
@@ -12,7 +13,9 @@ export type ToldSession = {
   checked: number; outcomes: Record<string, number>;
 };
 export type NeverTold = { id: string; text: string; role: string | null; kept: string; sessionsSince: number; tooEarly: boolean; how: "always" | "keyword" | "lookup"; keywords: string[] };
-export type ToldData = { days: number; sessions: ToldSession[]; outcomes: Record<string, number>; unplaced: number; minSessions: number; neverTold: NeverTold[] };
+export type ToldData = { days: number; sessions: ToldSession[]; outcomes: Record<string, number>; unplaced: number; minSessions: number; neverTold: NeverTold[];
+  /** How much muninn may add to an agent: lessons and tokens per message, tokens per session. Past these, lessons are held back. */
+  room: { lessons: number; tokens: number; sessionTokens: number } };
 
 type Row = Record<string, unknown>;
 /** A lesson not told is only worth flagging once this many sessions in its repo have run since it was kept. */
@@ -60,7 +63,7 @@ export async function toldData(db: Client, repo: string | null, days = 7): Promi
     // Older rows have no kind: a lesson, or a handoff where one is named.
     const kind = s(r.kind) || (r.handoff_id ? "handoff" : "lesson");
     if (kind === "lesson") x.checked++;
-    if (o === "limit" && r.lesson_id && !x.held.some((h) => h.id === r.lesson_id)) x.held.push({ kind: "lesson", id: s(r.lesson_id), text: s(r.lplain || r.ltext), why: "over the limit for one message or session" });
+    if (o === "limit" && r.lesson_id && !x.held.some((h) => h.id === r.lesson_id)) x.held.push({ kind: "lesson", id: s(r.lesson_id), text: s(r.lplain || r.ltext), why: "no room left in that message or session" });
     if (o !== "sent") continue;
     // Loop warnings show from live_loops, which also has the command and how often it failed.
     if (kind === "loop") continue;
@@ -87,5 +90,6 @@ export async function toldData(db: Client, repo: string | null, days = 7): Promi
     return { id: s(l.id), text: s(l.plain || l.text), role: l.role ? s(l.role) : null, kept: s(l.kept), sessionsSince, tooEarly: sessionsSince < MIN_SESSIONS, how: Number(l.always_on) ? "always" : keywords.length ? "keyword" : "lookup", keywords };
   });
   const list = [...by.values()].sort((a, b) => b.start.localeCompare(a.start));
-  return { days, sessions: list, outcomes, unplaced: unplacedSet.size, minSessions: MIN_SESSIONS, neverTold };
+  const cfg = settings();
+  return { days, sessions: list, outcomes, unplaced: unplacedSet.size, minSessions: MIN_SESSIONS, neverTold, room: { lessons: cfg.maxPerDelivery, tokens: cfg.tokensPerDelivery, sessionTokens: cfg.tokensPerSession } };
 }
