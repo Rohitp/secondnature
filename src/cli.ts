@@ -80,7 +80,11 @@ async function shareCmd(args: string[]) {
   if (pulled) console.log(`Kept ${pulled} lesson(s) a teammate added to ${t.TEAM_FILE} first.`);
   if (!r.lessons) { console.log("No lessons to share yet: only kept lessons for this repo that are told every session or on a keyword are shared."); return; }
   console.log(`Shared ${r.lessons} lesson(s). ${r.files.length ? `Changed ${r.files.join(", ")}.` : "The files were already up to date."}`);
-  console.log(`Review the change with "git diff" and commit it. A teammate's agents read the lessons from these files; if they use muninn, "muninn share pull" keeps them so they're measured too.`);
+  if (r.ignored) {
+    const { relative } = await import("node:path");
+    console.log(`\nGit ignores ${t.TEAM_FILE}, because of "${r.ignored.pattern}" on line ${r.ignored.line} of ${relative(r.root, r.ignored.file) || r.ignored.file}, so it won't be committed. Teammates' agents still read the other files, but their muninn can't keep these lessons. To commit it, put these lines in .gitignore${t.letThrough(r.ignored.pattern).length > 1 ? ` in place of "${r.ignored.pattern}"` : ""}:\n${t.letThrough(r.ignored.pattern).map((l) => `  ${l}`).join("\n")}`);
+  }
+  console.log(`\nSee the changed and new files with "git status", review them with "git diff" and by opening the new ones, then commit them. A teammate's agents read the lessons from these files; if they use muninn, "muninn share pull" keeps them so they're measured too.`);
 }
 
 async function cursorCmd(sub: string) {
