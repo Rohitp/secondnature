@@ -15,6 +15,8 @@ export type QueryRow = {
   /** Where: the MCP tool's name (search_history, get_runs…), or ask, recall, related for the command line. */
   surface: string;
   query: string; results: number; result_ids: ResultRef[]; ms: number;
+  /** The text the agent got back (private details hidden, cut at 8,000 characters). None on rows from before it was kept. */
+  answer?: string | null;
 };
 
 /** Who is running this `muninn` command: an agent's environment variables say which tool started it. */
@@ -39,8 +41,8 @@ export function toolFromClient(name: string | undefined): string {
 export async function recordQuery(db: Client, q: Omit<QueryRow, "id" | "ts" | "query"> & { query: string }): Promise<void> {
   try {
     await db.execute({
-      sql: "INSERT INTO agent_queries (id,ts,repo,branch,session,tool,surface,query,results,result_ids,ms) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-      args: [randomUUID(), new Date().toISOString(), q.repo, q.branch, q.session, q.tool, q.surface, redact(q.query).slice(0, 300), q.results, JSON.stringify(q.result_ids.slice(0, 40)), Math.round(q.ms)],
+      sql: "INSERT INTO agent_queries (id,ts,repo,branch,session,tool,surface,query,results,result_ids,ms,answer) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+      args: [randomUUID(), new Date().toISOString(), q.repo, q.branch, q.session, q.tool, q.surface, redact(q.query).slice(0, 300), q.results, JSON.stringify(q.result_ids.slice(0, 40)), Math.round(q.ms), q.answer == null ? null : redact(q.answer).slice(0, 8000)],
     });
   } catch { /* never let the log break an answer */ }
 }
@@ -50,7 +52,7 @@ export async function listQueries(db: Client, o: { repo?: string | null; days?: 
   const where = [o.repo ? "(repo=? OR repo IS NULL)" : "1", o.days ? "ts>=?" : "1"].join(" AND ");
   const args = [...(o.repo ? [o.repo] : []), ...(o.days ? [new Date(Date.now() - o.days * 86_400_000).toISOString()] : [])];
   const rows = (await db.execute({ sql: `SELECT * FROM agent_queries WHERE ${where} ORDER BY ts DESC LIMIT ?`, args: [...args, o.limit ?? 500] })).rows;
-  return rows.map((r) => ({ id: String(r.id), ts: String(r.ts), repo: r.repo == null ? null : String(r.repo), branch: r.branch == null ? null : String(r.branch), session: r.session == null ? null : String(r.session), tool: String(r.tool), surface: String(r.surface), query: String(r.query), results: Number(r.results), result_ids: JSON.parse(String(r.result_ids ?? "[]")), ms: Number(r.ms) }));
+  return rows.map((r) => ({ id: String(r.id), ts: String(r.ts), repo: r.repo == null ? null : String(r.repo), branch: r.branch == null ? null : String(r.branch), session: r.session == null ? null : String(r.session), tool: String(r.tool), surface: String(r.surface), query: String(r.query), results: Number(r.results), result_ids: JSON.parse(String(r.result_ids ?? "[]")), ms: Number(r.ms), answer: r.answer == null ? null : String(r.answer) }));
 }
 
 /** How often agents found each lesson (terminal questions left out): lesson id → count. */

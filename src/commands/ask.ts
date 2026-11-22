@@ -121,8 +121,10 @@ export async function ask(args: string[]) {
   const { recordQuery, whoIsAsking } = await import("../store/queries.js");
   const { currentBranch } = await import("../handoff/handoff.js");
   const who = whoIsAsking();
+  const out = hits.length
+    ? hits.map((r) => `- ${r.text}${r.plain ? `\n  In short: ${r.plain}` : ""}\n  ${r.where}, kept ${r.kind === "note" ? "note" : "lesson"}. ${r.origin}.`).join("\n")
+    : past.length ? `No kept lesson matches. From past sessions:\n\n${recallText(past, false)}` : "No kept lesson or past session matches.";
   const found = hits.length ? hits.map((h) => ({ kind: (h.kind === "note" ? "note" : "lesson") as "note" | "lesson", id: h.id })) : past.map((h) => ({ kind: "session" as const, id: h.session }));
-  await recordQuery(db, { repo, branch: repo ? currentBranch(process.cwd()) : null, session: who.session, tool: who.tool, surface: "ask", query: q, results: found.length, result_ids: found, ms: Date.now() - t0 });
-  if (!hits.length) { console.log(past.length ? `No kept lesson matches. From past sessions:\n\n${recallText(past, false)}` : "No kept lesson or past session matches."); return; }
-  for (const r of hits) console.log(`- ${r.text}${r.plain ? `\n  In short: ${r.plain}` : ""}\n  ${r.where}, kept ${r.kind === "note" ? "note" : "lesson"}. ${r.origin}.`);
+  await recordQuery(db, { repo, branch: repo ? currentBranch(process.cwd()) : null, session: who.session, tool: who.tool, surface: "ask", query: q, results: found.length, result_ids: found, ms: Date.now() - t0, answer: out });
+  console.log(out);
 }

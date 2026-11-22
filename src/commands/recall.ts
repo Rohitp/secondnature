@@ -85,7 +85,7 @@ export async function recall(args: string[]) {
   const { recordQuery, whoIsAsking } = await import("../store/queries.js");
   const { currentBranch } = await import("../handoff/handoff.js");
   const who = whoIsAsking();
-  await recordQuery(db, { repo, branch: repo ? currentBranch(process.cwd()) : null, session: who.session, tool: who.tool, surface: "recall", query: q, results: hits.length, result_ids: hits.map((h) => ({ kind: "session" as const, id: h.session })), ms: Date.now() - t0 });
-  if (!hits.length) { console.log(`Nothing in ${repo ? "this repo's" : "your"} sessions matches.${repo ? " Try --all-repos." : ""}`); return; }
-  console.log(recallText(hits, args.includes("--full")));
+  const out = hits.length ? recallText(hits, args.includes("--full")) : `Nothing in ${repo ? "this repo's" : "your"} sessions matches.${repo ? " Try --all-repos." : ""}`;
+  await recordQuery(db, { repo, branch: repo ? currentBranch(process.cwd()) : null, session: who.session, tool: who.tool, surface: "recall", query: q, results: hits.length, result_ids: hits.map((h) => ({ kind: "session" as const, id: h.session })), ms: Date.now() - t0, answer: out });
+  console.log(out);
 }

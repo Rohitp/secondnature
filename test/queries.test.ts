@@ -26,6 +26,17 @@ describe("the log of what agents ask", () => {
     await recordQuery(db, ask({ tool: "terminal", results: 1, result_ids: [{ kind: "lesson", id: "L1" }] }));
     expect(await lessonFinds(db)).toEqual({ L1: 1, L2: 1 });
   });
+  it("keeps the answer the agent got back, with private details hidden, so the page can show it", async () => {
+    const db = await openDb();
+    await recordQuery(db, ask({ query: "deploy key", answer: "Use the key ghp_abcdefghijklmnopqrstuvwxyz0123456789 to deploy.\n" + "y".repeat(9000) }));
+    await recordQuery(db, ask({ query: "older" }));
+    const rows = await listQueries(db, { repo });
+    const none = rows.find((r) => r.query === "older"), got = rows.find((r) => r.query === "deploy key");
+    expect(none!.answer).toBeNull();
+    expect(got!.answer!.startsWith("Use the key")).toBe(true);
+    expect(got!.answer).not.toContain("ghp_abcdefghijklmnopqrstuvwxyz0123456789");
+    expect(got!.answer!.length).toBeLessThanOrEqual(8000);
+  });
   it("names who is asking from their environment or MCP client", () => {
     expect(whoIsAsking({ CLAUDECODE: "1", CLAUDE_CODE_SESSION_ID: "s1" }, false)).toEqual({ tool: "claude-code", session: "s1" });
     expect(whoIsAsking({ CODEX_HOME: "/x" }, false).tool).toBe("codex");

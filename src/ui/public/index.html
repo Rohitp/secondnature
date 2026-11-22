@@ -307,6 +307,7 @@ function rememberPick() {
 }
 let showAll = false;
 let open = null; // the id of the row opened for editing
+let openQuery = null; // the agent question opened in "What agents asked", to show what it got back
 let data = null;
 let planEdit = null; // the plan item being edited: an id, "goal", or "new"
 let planBranch = picked.get("branch") || null; // the branch whose plan is shown; null means the one checked out
@@ -624,7 +625,7 @@ async function load() {
   const asked = await api("/api/queries?" + q({ repo, days: 7 })).catch(() => ({ queries: [], lessonFinds: {} }));
   // What secondnature's hooks told agents this week, session by session, and what it held back.
   const told = await api("/api/told?" + q({ repo, days: 7 })).catch(() => null);
-  data = { repos, suggested, kept, home, scan, plan, memory, lessonFile, proposals, threads, askSuggestions, rules, schedule, runs: Array.isArray(runs) ? runs : [], runInfo, effects: Array.isArray(effects) ? effects : [], queries: (asked.queries || []).filter((x) => x.tool !== "terminal"), lessonFinds: asked.lessonFinds || {}, told };
+  data = { repos, suggested, kept, home, scan, plan, memory, lessonFile, proposals, threads, askSuggestions, rules, schedule, runs: Array.isArray(runs) ? runs : [], runInfo, effects: Array.isArray(effects) ? effects : [], queries: (asked.queries || []).filter((x) => x.tool !== "terminal"), lessonFinds: asked.lessonFinds || {}, lessonText: asked.lessonText || {}, told };
 }
 
 /* Autonomous runs: sessions working together in a repo, each in a role (subagents, or agents in their own worktrees),
@@ -1148,6 +1149,31 @@ function toldSection() {
 }
 /* What agents asked secondnature this week: through its MCP tools or muninn ask. Shows whether it's useful to them. */
 const TOOL_NAMES = { "claude-code": "Claude Code", codex: "Codex", cursor: "Cursor", antigravity: "Antigravity", "claude-desktop": "Claude Desktop", agent: "an agent" };
+// What each way of asking does, in plain words, for the opened question.
+const SURFACE_SAYS = {
+  search_history: "searched lessons, plans and past sessions", get_plan: "read a branch's plan", get_week: "read the recent week", get_related: "looked up what a decision led to",
+  list_repos: "listed the repos", suggest_lesson: "suggested a lesson", get_runs: "read runs where agents worked together", list_lessons: "listed the lessons",
+  where_left_off: "read where the last session left off", review_lesson: "kept or dismissed a lesson", ask: "ran muninn ask", recall: "ran muninn recall", related: "ran muninn related",
+};
+const FOUND_KIND = { lesson: "Lesson", note: "Note", session: "Past session", plan: "Plan", run: "Run", handoff: "Where a session left off", link: "Links", repo: "Repo" };
+/* The opened question: everything it asked, and what it got back. Rows from before answers were kept list what was found. */
+function askedDetail(x) {
+  const lessons = [...(data.kept || []), ...(data.suggested || [])];
+  const found = (x.result_ids || []).map((r) => {
+    const text = (r.kind === "lesson" || r.kind === "note") && (data.lessonText?.[r.id] || lessons.find((k) => k.id === r.id)?.text);
+    return `<li>${esc(FOUND_KIND[r.kind] || r.kind)}: ${text ? esc(clip(text, 200)) : `<span class="mono">${esc(clip(r.id, 80))}</span>`}</li>`;
+  }).join("");
+  const facts = [`${esc(TOOL_NAMES[x.tool] || x.tool)} ${esc(SURFACE_SAYS[x.surface] || `used ${x.surface}`)}`, x.repo ? `in ${esc(short(x.repo))}` : null, x.branch ? `on ${esc(x.branch)}` : null, `took ${x.ms < 1000 ? `${x.ms} ms` : `${(x.ms / 1000).toFixed(1)} s`}`, x.session ? `session <span class="mono">${esc(x.session.slice(0, 8))}</span>` : null].filter(Boolean).join(" · ");
+  return `<tr class="askdetail"><td colspan="4" style="background:var(--fill)">
+    <div style="font-size:13px;color:var(--muted);margin-bottom:8px">${facts}</div>
+    <div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">Asked</div>
+    <div style="margin:2px 0 12px">${x.query ? esc(x.query) : '<span style="color:var(--muted)">No question: a lookup with no words, such as listing the repos.</span>'}</div>
+    <div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">${x.answer != null ? "What it got back" : "What it found"}</div>
+    ${x.answer != null ? `<pre style="white-space:pre-wrap;font:12px/1.6 var(--mono);margin:4px 0 0;max-height:420px;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px 14px">${esc(x.answer)}</pre>`
+      : found ? `<ul style="margin:4px 0 0;padding-left:18px">${found}</ul><p class="note" style="margin-top:8px">Asked before secondnature kept the text of each answer, so only what it found is shown.</p>`
+      : `<p style="margin:4px 0 0">Nothing. This was asked before secondnature kept the text of each answer.</p>`}
+  </td></tr>`;
+}
 function askedSection() {
   const qs = data.queries;
   if (!qs.length) return `<section><h2>What agents asked · 0</h2><ul class="group"><li class="empty">No agent has asked secondnature anything this week. Agents can ask through its MCP tools (search_history, get_plan, where_left_off…) or by running muninn ask; each question shows here with what it found.</li></ul></section>`;
@@ -1157,13 +1183,13 @@ function askedSection() {
   const bySurface = count((x) => x.surface).slice(0, 4).map(([k, n]) => `<span class="tag">${esc(k)}</span> ${n}`).join(" ");
   // Asked more than once, in about the same words.
   const again = count((x) => x.query.toLowerCase().replace(/\s+/g, " ").trim()).filter(([k, n]) => n > 1 && k).slice(0, 3);
-  const rows = qs.slice(0, 12).map((x) => `<tr><td style="white-space:nowrap;color:var(--muted)">${esc(shortDate(x.ts))}, ${esc(clock(x.ts))}</td><td>${esc(TOOL_NAMES[x.tool] || x.tool)}<div style="font:500 12px/17px var(--mono);color:var(--muted)">${esc(x.surface)}</div></td><td>${x.query ? esc(clip(x.query, 140)) : '<span style="color:var(--muted)">(no question: a lookup)</span>'}</td><td>${x.results ? `<span class="status good">${x.results} found</span>` : '<span class="status warn">nothing</span>'}</td></tr>`).join("");
+  const rows = qs.slice(0, 12).map((x) => { const isOpen = openQuery === x.id; return `<tr><td style="white-space:nowrap;color:var(--muted)">${esc(shortDate(x.ts))}, ${esc(clock(x.ts))}</td><td>${esc(TOOL_NAMES[x.tool] || x.tool)}<div style="font:500 12px/17px var(--mono);color:var(--muted)">${esc(x.surface)}</div></td><td><button class="linkbtn" style="text-align:left;font-size:13px;font-weight:400" data-query="${esc(x.id)}" aria-expanded="${isOpen}">${x.query ? esc(clip(x.query, 140)) : "(no question: a lookup)"}</button><div style="font-size:12px;color:var(--muted)">${isOpen ? "Hide" : "Show what it got back"}</div></td><td>${x.results ? `<span class="status good">${x.results} found</span>` : '<span class="status warn">nothing</span>'}</td></tr>${isOpen ? askedDetail(x) : ""}`; }).join("");
   return `<section><h2>What agents asked · ${qs.length}</h2><div class="panel">
     <div class="panelbody" style="display:flex;gap:6px 18px;flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--line)">
       <span><b>${Math.round((found / qs.length) * 100)}%</b> found something</span><span style="color:var(--muted)">${byTool}</span><span>${bySurface}</span></div>
     ${again.length ? `<div class="panelbody" style="border-bottom:1px solid var(--line);font-size:13px"><span style="color:var(--muted)">Asked more than once:</span> ${again.map(([k, n]) => `"${esc(clip(k, 80))}" ×${n}`).join(" · ")}</div>` : ""}
     <div class="tablewrap"><table class="data"><thead><tr><th>When</th><th>Who, and how</th><th>Question</th><th>Result</th></tr></thead><tbody>${rows}</tbody></table></div>
-  </div><p class="note">Questions that found nothing show where secondnature has nothing to offer yet. Questions you type in a terminal aren't counted.</p></section>`;
+  </div><p class="note">Click a question to see what the agent got back. Questions that found nothing show where secondnature has nothing to offer yet. Questions you type in a terminal aren't counted.</p></section>`;
 }
 /* Settings: this repo's delivery and files, and this Mac's background checks. */
 function settingsView() {
@@ -1239,6 +1265,7 @@ document.addEventListener("click", async (e) => {
   try {
     if (el.dataset.open) { open = open === el.dataset.open ? null : el.dataset.open; draw(); return; }
     if (el.dataset.more !== undefined) { showAll = !showAll; draw(); return; }
+    if (el.dataset.query) { openQuery = openQuery === el.dataset.query ? null : el.dataset.query; draw(); return; }
     // The plan
     if (el.dataset.planEdit) { planEdit = el.dataset.planEdit; draw(); $("#pe")?.focus(); return; }
     if (el.dataset.planNew !== undefined) { planEdit = "new"; draw(); $("#pe")?.focus(); return; }

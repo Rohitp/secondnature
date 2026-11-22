@@ -44,8 +44,15 @@ describe("answers from everything muninn keeps", () => {
 
 describe("the MCP tools", () => {
   it("lists its tools, each with a schema", () => {
-    expect(TOOLS.map((t) => t.name)).toEqual(["search_history", "get_plan", "get_week", "get_related", "list_repos", "suggest_lesson", "get_runs", "list_lessons", "where_left_off", "review_lesson"]);
+    expect(TOOLS.map((t) => t.name)).toEqual(["search_history", "where_left_off", "get_plan", "list_lessons", "get_related", "get_week", "get_runs", "list_repos", "suggest_lesson", "review_lesson"]);
     for (const t of TOOLS) expect(t.inputSchema.type).toBe("object");
+  });
+  it("says when to use each tool first, and marks which ones only read", () => {
+    // An agent reaches for a tool when its description names the moment it's in, so each opens with when to use it.
+    for (const t of TOOLS.filter((t) => t.name !== "review_lesson")) expect(t.description).toMatch(/^(Use this|Call this)/);
+    for (const t of TOOLS) expect(t.title).toBeTruthy();
+    const writes = TOOLS.filter((t) => !t.annotations.readOnlyHint).map((t) => t.name);
+    expect(writes).toEqual(["suggest_lesson", "review_lesson"]);
   });
   it("finds a repo by its short name, and says which ones exist when it can't", async () => {
     const db = await openDb();

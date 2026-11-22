@@ -193,7 +193,12 @@ const routes: Record<string, Handler> = {
   "GET /api/queries": async (db, q) => {
     const { listQueries, lessonFinds } = await import("../store/queries.js");
     const days = Number(q.get("days") || 7);
-    return { queries: await listQueries(db, { repo: q.get("repo") || null, days }), lessonFinds: await lessonFinds(db, { days: Number(q.get("findsDays") || 3650) }) };
+    const queries = await listQueries(db, { repo: q.get("repo") || null, days });
+    // The text of each lesson a question found, so an opened question shows it, whichever repo the lesson is kept in.
+    const ids = [...new Set(queries.flatMap((x) => x.result_ids).filter((r) => r.kind === "lesson" || r.kind === "note").map((r) => r.id))].slice(0, 400);
+    const lessonText: Record<string, string> = {};
+    if (ids.length) for (const r of (await db.execute({ sql: `SELECT id, text FROM lessons WHERE id IN (${ids.map(() => "?").join(",")})`, args: ids })).rows) lessonText[String(r.id)] = String(r.text);
+    return { queries, lessonText, lessonFinds: await lessonFinds(db, { days: Number(q.get("findsDays") || 3650) }) };
   },
   "GET /api/told": async (db, q) => (await import("../commands/told.js")).toldData(db, q.get("repo") || null, Number(q.get("days") || 7)),
   "GET /api/role-effects": async (db, q) => (await import("../workflow/effect.js")).roleEffects(db, q.get("repo") || null),

@@ -20,63 +20,95 @@ import { recordQuery, toolFromClient } from "../store/queries.js";
  */
 const VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 const repoArg = { type: "string", description: "A repo's name as muninn lists it (for example \"servanda\"). Leave out for the repo the chat is running in, if any, else all repos." };
+// Each description opens with when to call it, in the moments an agent is in, because that's what makes an agent reach
+// for a tool: "the engineer says 'last time'", not "searches the history". All are local and fast; only two write anything.
+const READ = { readOnlyHint: true, openWorldHint: false } as const;
 export const TOOLS = [
   {
     name: "search_history",
-    description: "Search everything muninn keeps about the engineer's coding work: kept lessons and notes, branch plan decisions and finished work, and exchanges from past coding-agent sessions (what they asked, what the agent said and ran). Finds by meaning and by words. Use it to answer questions like \"why did we rename the package?\", \"how did we fix the webhook last time?\" or \"what did I work on in servanda?\". Cite what you use, with its date.",
-    inputSchema: { type: "object", properties: { query: { type: "string", description: "What to look for, in plain words." }, repo: repoArg, all_repos: { type: "boolean", description: "Search every repo." } }, required: ["query"] },
-  },
-  {
-    name: "get_plan",
-    description: "A branch's plan as muninn keeps it from the engineer's sessions: the goal, where it stands, what's next, decisions with dates, and what's done.",
-    inputSchema: { type: "object", properties: { repo: repoArg, branch: { type: "string", description: "Branch name. Leave out for the branch checked out, else main." } } },
-  },
-  {
-    name: "get_week",
-    description: "The engineer's recent days with coding agents: sessions, where effort was wasted (loops, failures, wrong paths), whether kept lessons helped, and what's waiting for review.",
-    inputSchema: { type: "object", properties: { repo: repoArg, all_repos: { type: "boolean" }, days: { type: "number", description: "How many days back; default 7." } } },
-  },
-  {
-    name: "get_related",
-    description: "What a decision or piece of finished work connects to in the engineer's history: the outcomes a decision led to, the decisions behind an outcome, the sessions it was discussed and built in, the commits it shipped in, and the files those sessions worked on. Use it for questions like \"what did deciding X affect?\" or \"why was Y built?\", then check the code itself for what is affected today.",
-    inputSchema: { type: "object", properties: { about: { type: "string", description: "The decision or work, in plain words." }, repo: repoArg, all_repos: { type: "boolean" } }, required: ["about"] },
-  },
-  {
-    name: "list_repos",
-    description: "The repos muninn knows, with how many lessons each has kept and waiting.",
-    inputSchema: { type: "object", properties: {} },
-  },
-  {
-    name: "suggest_lesson",
-    description: "Suggest a lesson for the engineer's coding agents, when they say something should be remembered (\"remember that…\", \"agents should always…\"). It goes into muninn's review queue; nothing reaches an agent until the engineer keeps it. Write it as an instruction to an agent, in one or two plain sentences.",
-    inputSchema: { type: "object", properties: { text: { type: "string" }, repo: repoArg, everywhere: { type: "boolean", description: "True if it applies in every repo, like how to explain things." } }, required: ["text"] },
-  },
-  {
-    name: "get_runs",
-    description: "Autonomous work in a repo: workflow runs where agents worked together (subagents, an agent swarm, worktrees such as builder, reviewer and qa). For each run: time and tokens per role, commands and failures, approvals, work sent back, fixes made after approval, gaps where no agent worked, and the findings muninn wrote about it. Also whether each lesson kept for one role has worked since.",
-    inputSchema: { type: "object", properties: { repo: repoArg, all_repos: { type: "boolean" }, limit: { type: "number", description: "How many recent runs; default 5." }, include_single: { type: "boolean", description: "Also runs with only one role (a plain session)." } } },
-  },
-  {
-    name: "list_lessons",
-    description: "The lessons muninn keeps for the engineer's coding agents in a repo: what agents are told and when (every session, on a keyword, or only when searched), why each was kept, which role it's for in a team of agents, and whether it has worked. Also the suggestions waiting for the engineer's review.",
-    inputSchema: { type: "object", properties: { repo: repoArg, all_repos: { type: "boolean" }, waiting: { type: "boolean", description: "Only the suggestions waiting for review." } } },
+    title: "Search past work",
+    description: "Use this before answering or acting on anything that depends on earlier work in this repo: when the engineer says \"like last time\", \"we decided\", \"why did we…\", \"how did we fix…\", names something you don't see explained in the code, or when you're about to try a fix that may have been tried before. It searches what git and the code don't keep: past coding-agent conversations (what was asked, what the agent said and ran, what failed), the lessons the engineer kept, and the branch plan's decisions. Finds by meaning and by words, in under a second. Cite what you use, with its date.",
+    inputSchema: { type: "object", properties: { query: { type: "string", description: "What to look for, in plain words, e.g. \"why we pinned the libsql version\"." }, repo: repoArg, all_repos: { type: "boolean", description: "Search every repo, for something done in another project." } }, required: ["query"] },
+    annotations: READ,
   },
   {
     name: "where_left_off",
-    description: "Where the last coding-agent session on a branch left off: what it was doing, what was done, and what's next. Use it when starting work, or when the engineer asks where things stand.",
+    title: "Where the last session left off",
+    description: "Call this at the start of work on a branch, or after the conversation was compressed, before planning anything: it says what the last coding-agent session on the branch was doing, what it finished, what was left, and what it was about to do next. Also when the engineer asks \"where are we?\" or \"what's next?\".",
     inputSchema: { type: "object", properties: { repo: repoArg, branch: { type: "string", description: "Branch name. Leave out for the branch checked out, else main." } } },
+    annotations: READ,
+  },
+  {
+    name: "get_plan",
+    title: "The branch's plan",
+    description: "Use this when deciding what to do next on a branch, or before changing direction: the branch's goal, where it stands, what's next, the decisions made along the way (with dates, so you don't undo one), and what's done. Kept by muninn from the engineer's sessions.",
+    inputSchema: { type: "object", properties: { repo: repoArg, branch: { type: "string", description: "Branch name. Leave out for the branch checked out, else main." } } },
+    annotations: READ,
+  },
+  {
+    name: "list_lessons",
+    title: "Lessons the engineer kept",
+    description: "Use this when you're unsure how the engineer wants something done here (conventions, workflow, how to explain things), or when they ask what agents are told. Lists the lessons the engineer kept for coding agents: the instruction, why it was kept, when agents are told it (every session, on a keyword, or only when searched, so some you were never told), the role it's for, and whether it has worked. Also the suggestions waiting for their review.",
+    inputSchema: { type: "object", properties: { repo: repoArg, all_repos: { type: "boolean" }, waiting: { type: "boolean", description: "Only the suggestions waiting for review." } } },
+    annotations: READ,
+  },
+  {
+    name: "get_related",
+    title: "What a decision connects to",
+    description: "Use this before changing or reverting something that was decided on purpose, or when asked \"what did X affect?\" or \"why was Y built?\": the outcomes a decision led to, the decisions behind a piece of work, the sessions it was discussed and built in, its commits, and the files those sessions touched. Then check the code itself for what's affected today.",
+    inputSchema: { type: "object", properties: { about: { type: "string", description: "The decision or work, in plain words." }, repo: repoArg, all_repos: { type: "boolean" } }, required: ["about"] },
+    annotations: READ,
+  },
+  {
+    name: "get_week",
+    title: "The engineer's recent week",
+    description: "Use this when the engineer asks how their week went, what they worked on, or where time was lost: recent sessions, effort wasted (loops, repeated failures, wrong paths), whether kept lessons helped, and what's waiting for their review.",
+    inputSchema: { type: "object", properties: { repo: repoArg, all_repos: { type: "boolean" }, days: { type: "number", description: "How many days back; default 7." } } },
+    annotations: READ,
+  },
+  {
+    name: "get_runs",
+    title: "How agent teams did",
+    description: "Use this before starting or reviewing autonomous work with several agents (subagents, workflows, an agent swarm, builder/reviewer/qa worktrees), or when asked how such a run went. For each recent run: time, tokens and cost per role, failures, approvals, work sent back, fixes needed after approval, idle gaps, and muninn's findings. Also whether lessons kept for one role have worked since.",
+    inputSchema: { type: "object", properties: { repo: repoArg, all_repos: { type: "boolean" }, limit: { type: "number", description: "How many recent runs; default 5." }, include_single: { type: "boolean", description: "Also runs with only one role (a plain session)." } } },
+    annotations: READ,
+  },
+  {
+    name: "list_repos",
+    title: "Repos muninn knows",
+    description: "Use this when the engineer mentions another project by name and you need muninn's name for it (for the repo argument of the other tools), or asks which repos muninn knows: each with its kept lessons, suggestions waiting and stored sessions.",
+    inputSchema: { type: "object", properties: {} },
+    annotations: READ,
+  },
+  {
+    name: "suggest_lesson",
+    title: "Suggest a lesson",
+    description: "Use this when the engineer says something should be remembered for future agents (\"remember that…\", \"from now on…\", \"agents should always…\"), or corrects you on something a future agent would get wrong too. It goes into the engineer's review queue; nothing reaches an agent until they keep it. Write it as an instruction to an agent, in one or two plain sentences.",
+    inputSchema: { type: "object", properties: { text: { type: "string" }, repo: repoArg, everywhere: { type: "boolean", description: "True if it applies in every repo, like how to explain things." } }, required: ["text"] },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   },
   {
     name: "review_lesson",
+    title: "Keep or dismiss a suggested lesson",
     description: "Keep or dismiss a lesson waiting for the engineer's review, by the id list_lessons shows. Only when the engineer has said, in this chat, to keep or dismiss that specific lesson: never on your own judgement, and never for several lessons from one general instruction. Keeping makes agents be told it, with muninn's usual choice of when (every session, or on a keyword).",
     inputSchema: { type: "object", properties: {
       id: { type: "string", description: "The lesson's id or its first 8 characters, as list_lessons shows it." },
       action: { type: "string", enum: ["keep", "dismiss"] },
       engineer_said: { type: "string", description: "The engineer's own words in this chat asking for this, quoted." },
     }, required: ["id", "action", "engineer_said"] },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
 ] as const;
 
+/** Sent once when a chat connects; clients that show it put it in the agent's instructions. */
+export const MCP_INSTRUCTIONS = [
+  "muninn keeps the engineer's coding history that git and the code don't: past coding-agent conversations, the lessons they kept for agents, branch plans and their decisions, and runs where agents worked together. It's local and answers in under a second, so check it rather than guess.",
+  "- Starting on a branch, or after the conversation was compressed: where_left_off, then get_plan.",
+  "- The engineer refers to earlier work (\"last time\", \"we decided\", \"why did we\"), or you're about to retry a fix that may have failed before: search_history.",
+  "- Unsure how the engineer wants something done: list_lessons.",
+  "- About to undo something decided on purpose: get_related.",
+  "- They ask for something to be remembered: suggest_lesson (they review it first).",
+].join("\n");
 type Args = Record<string, unknown>;
 /** The installed package's version, for the server's own info. */
 function packageVersion(): string {
@@ -243,18 +275,19 @@ export async function serveMcp() {
         client = toolFromClient(m.params?.clientInfo?.name);
         const asked = String(m.params?.protocolVersion ?? "");
         reply({ protocolVersion: VERSIONS.includes(asked) ? asked : VERSIONS[0], capabilities: { tools: {} }, serverInfo: { name: "muninn", title: "muninn (secondnature)", version: packageVersion() },
-          instructions: "muninn keeps the engineer's coding history: lessons, branch plans, past agent sessions, and autonomous runs where agents worked together. Search it before answering questions about past work, check where_left_off when starting work on a branch, use get_runs for how agent teams did, and suggest a lesson when they ask for something to be remembered." });
+          instructions: MCP_INSTRUCTIONS });
       } else if (m.method === "ping") reply({});
       else if (m.method === "tools/list") reply({ tools: TOOLS });
       else if (m.method === "tools/call") {
         const name = String(m.params?.name), args = (m.params?.arguments ?? {}) as Args, found: Found = [], t0 = Date.now();
-        try { reply({ content: [{ type: "text", text: await callTool(db, name, args, embed, found) }] }); }
-        catch (e) { reply({ content: [{ type: "text", text: e instanceof Error ? e.message : String(e) }], isError: true }); }
+        let answer: string;
+        try { answer = await callTool(db, name, args, embed, found); reply({ content: [{ type: "text", text: answer }] }); }
+        catch (e) { answer = `Error: ${e instanceof Error ? e.message : String(e)}`; reply({ content: [{ type: "text", text: answer.slice(7) }], isError: true }); }
         // The log of agents' questions: what was asked, where, and what it found.
         const repo = await resolveRepo(db, args).catch(() => null);
         const here = repoIdentity(process.cwd());
         const asked = String(args.query ?? args.about ?? args.text ?? args.id ?? args.branch ?? Object.values(args).filter((v) => typeof v === "string").join(" ") ?? "");
-        await recordQuery(db, { repo, branch: repo && repo === here ? currentBranch(process.cwd()) : (typeof args.branch === "string" ? args.branch : null), session: process.env.CLAUDE_CODE_SESSION_ID ?? null, tool: client, surface: name, query: asked, results: found.length, result_ids: found, ms: Date.now() - t0 });
+        await recordQuery(db, { repo, branch: repo && repo === here ? currentBranch(process.cwd()) : (typeof args.branch === "string" ? args.branch : null), session: process.env.CLAUDE_CODE_SESSION_ID ?? null, tool: client, surface: name, query: asked, results: found.length, result_ids: found, ms: Date.now() - t0, answer });
       } else send({ jsonrpc: "2.0", id: m.id, error: { code: -32601, message: `Unknown method ${m.method}` } });
     } catch (e) { send({ jsonrpc: "2.0", id: m.id, error: { code: -32603, message: e instanceof Error ? e.message : String(e) } }); }
   }
