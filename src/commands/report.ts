@@ -1,6 +1,8 @@
 import type { Client } from "@libsql/client";
 import { repoIdentity } from "../repo/identity.js";
 import { openDb } from "../store/db.js";
+import type { Session } from "../logs/types.js";
+import type { FixSaving } from "../learn/savings.js";
 
 const TOOL: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex", cursor: "Cursor", antigravity: "Antigravity" };
 export type LessonReport = {
@@ -10,13 +12,16 @@ export type LessonReport = {
   fix: "always-on" | null;
 };
 export type Spend = { what: string; calls: number; tokens: number; costUsd: number | null };
-export type Report = { lessons: LessonReport[]; lastLearn: string; handoffs: { written: number; delivered: number }; days: number; spend: Spend[]; delivered: { tokens: number; sessions: number } };
+export type Report = { fixes: FixSaving[]; lessons: LessonReport[]; lastLearn: string; handoffs: { written: number; delivered: number }; days: number; spend: Spend[]; delivered: { tokens: number; sessions: number } };
 
 /**
  * Whether kept lessons worked. "Seen again" means the same moment (a repeat, a correction, a failure)
  * turned up in a session after the lesson was kept. Evidence is only updated when muninn learn runs.
  */
-export async function reportData(db: Client, repo: string | null): Promise<Report> {
+export async function reportData(db: Client, repo: string | null, sessions?: Session[]): Promise<Report> {
+  // Output trims you applied, and what each saved. Sessions are read from the logs only when there's a trim to measure.
+  const anyTrim = (await db.execute({ sql: `SELECT 1 FROM proposals WHERE kind='trim' AND status='applied' ${repo ? "AND repo_id=?" : ""} LIMIT 1`, args: repo ? [repo] : [] })).rows.length > 0;
+  const fixes = anyTrim ? await (await import("../learn/savings.js")).fixSavings(db, repo, sessions ?? (await import("../logs/discover.js")).scanLogs().sessions) : [];
   const where = repo ? "AND (l.repo_id=? OR l.scope='global')" : "";
   const lessons = (await db.execute({ sql: `SELECT l.id,l.text,l.kind,l.signal,l.repo_id,coalesce(l.reviewed_at,l.created_at) kept,l.always_on,(SELECT group_concat(pattern, ', ') FROM triggers t WHERE t.lesson_id=l.id) kw FROM lessons l WHERE l.status='live' ${where} ORDER BY kept DESC`, args: repo ? [repo] : [] })).rows;
   // A tool gets lessons if muninn's hook runs there, whether or not anything matched.
@@ -70,13 +75,18 @@ export async function reportData(db: Client, repo: string | null): Promise<Repor
   const spend = (await db.execute({ sql: "SELECT what, count(*) calls, sum(input_tokens+output_tokens+cache_read+cache_write) tokens, sum(cost_usd) cost, count(cost_usd) priced FROM llm_calls WHERE ts>=? GROUP BY what ORDER BY tokens DESC", args: [since] })).rows
     .map((r) => ({ what: String(r.what), calls: Number(r.calls), tokens: Number(r.tokens ?? 0), costUsd: Number(r.priced) ? Number(r.cost) : null }));
   const dl = (await db.execute({ sql: "SELECT coalesce(sum(tokens),0) t, count(DISTINCT session) s FROM deliveries WHERE outcome='sent' AND ts>=?", args: [since] })).rows[0]!;
-  return { lessons: out, lastLearn, handoffs: { written: Number(h.n), delivered: Number(h.d) }, days, spend, delivered: { tokens: Number(dl.t), sessions: Number(dl.s) } };
+  return { fixes, lessons: out, lastLearn, handoffs: { written: Number(h.n), delivered: Number(h.d) }, days, spend, delivered: { tokens: Number(dl.t), sessions: Number(dl.s) } };
 }
 
 export async function report(args: string[]) {
   const db = await openDb();
   const repo = args.includes("--all") ? null : repoIdentity(process.cwd());
   const r = await reportData(db, repo);
+  if (r.fixes.length) {
+    console.log("Output trims you applied, before and after:");
+    for (const f of r.fixes) console.log(`\n${f.id.slice(0, 8)}  ${f.cmd} (${f.family}), applied ${f.appliedAt.slice(0, 10)}. ${f.before.runs} run(s) before, ${f.after.runs} since.\n  ${f.verdict}`);
+    console.log("");
+  }
   if (!r.lessons.length) { console.log("No kept lessons yet."); return; }
   // Lessons for one role in a team of agents: measured on runs, before and after.
   const roles = await (await import("../workflow/effect.js")).roleEffects(db, repo);

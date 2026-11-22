@@ -49,6 +49,11 @@ function afterText(events: LogEvent[], i: number): string | null {
 }
 /** Model turns after a moment: each one reads everything before it again, from the prompt cache. */
 const turnsAfter = (s: Session, ts: string) => (s.turns ?? []).filter((t) => t.ts > ts).length;
+/** Estimated dollars for some output shown to an agent at a moment: once as fresh input, then from the cache on each later turn. */
+export function outputCost(s: Session, ts: string, tokens: number): number | null {
+  const price = priceOf(s.model);
+  return price ? (tokens * price.input + tokens * turnsAfter(s, ts) * (price.cacheRead ?? price.input / 10)) / 1e6 : null;
+}
 
 const short = (cwd: string, p: string) => { const r = relative(cwd, p); return r && !r.startsWith("..") && !isAbsolute(r) ? r : p; };
 
@@ -59,7 +64,6 @@ export function wasteIndex(sessions: Session[], since = ""): WasteRow[] {
   type Acc = WasteRow & { sessionSet: Set<string>; toolSet: Set<string>; cost: number; priced: boolean };
   const rows = new Map<string, Acc>();
   for (const s of sessions) {
-    const price = priceOf(s.model);
     const cwd = s.cwd || "/";
     const prior = new Map<string, string[]>();
     s.events.forEach((e, i) => {
@@ -80,7 +84,8 @@ export function wasteIndex(sessions: Session[], since = ""): WasteRow[] {
       const words = e.k === "cmd" ? distinctive(e.output, e.cmd) : [];
       const next = afterText(s.events, i);
       if (words.length >= 3 && next) { r.judged++; if (words.some((w) => next.includes(w))) r.used = (r.used ?? 0) + 1; else r.used ??= 0; }
-      if (price) { r.priced = true; r.cost += (tokens * price.input + tokens * turnsAfter(s, e.ts) * (price.cacheRead ?? price.input / 10)) / 1e6; }
+      const c = outputCost(s, e.ts, tokens);
+      if (c != null) { r.priced = true; r.cost += c; }
       rows.set(key, r);
     });
   }
