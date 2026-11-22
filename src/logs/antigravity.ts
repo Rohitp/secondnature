@@ -89,7 +89,7 @@ export function readAntigravity(file: string): Session {
     // A command's result: the step after it, with its output and whether it errored.
     if (pending && /COMMAND/.test(o.type) && o.source !== "MODEL") {
       const failed = o.status === "ERROR" || /exit code[:\s]+[1-9]/i.test(body);
-      events.push({ k: "cmd", cmd: pending.cmd, failed, output: body.slice(-2000), ts });
+      events.push({ k: "cmd", cmd: pending.cmd, failed, output: body.slice(-2000), ts, size: body.length });
       pending = null;
     }
   }

@@ -22,7 +22,7 @@ export function readClaude(file: string): Session {
   let task = "";
   const messages: AgentMessage[] = [];
   // What each tool call asked for, until its result arrives: a shell command, or a file tool and the path it named.
-  const pending = new Map<string, { cmd: string } | { tool: string; path: string; pattern?: string }>();
+  const pending = new Map<string, { cmd: string } | { tool: string; path: string; pattern?: string; part?: boolean }>();
   let cwd = "", clientVersion = "unknown", unknown = 0, branch = "";
   for (const o of parseLines(file, readText)) {
     // New record types are normal. A message without the expected shape means the format changed.
@@ -68,13 +68,15 @@ export function readClaude(file: string): Session {
           pending.delete(x.tool_use_id);
           if (!("cmd" in call)) {
             // A file tool's result is the file itself: keep only enough to see why it failed.
-            const output = (typeof r === "string" ? r : textOf(x.content)).slice(0, 400);
-            if (!STOPPED.test(output)) events.push({ k: "file", ...call, failed: x.is_error === true, output, ts });
+            const whole = typeof r === "string" ? r : textOf(x.content);
+            const output = whole.slice(0, 400);
+            if (!STOPPED.test(output)) events.push({ k: "file", ...call, failed: x.is_error === true, output, ts, size: (textOf(x.content) || whole).length });
             continue;
           }
           const output = [r.stderr, r.stdout, typeof r === "string" ? r : "", textOf(x.content)].filter(Boolean).join("\n");
           const stopped = x.is_error === true && STOPPED.test(output);
-          events.push({ k: "cmd", cmd: call.cmd, failed: x.is_error === true, output: output.slice(-2000), ts, ...(stopped ? { stopped } : {}) });
+          // What the agent was shown is the tool result itself; stdout and stderr repeat it.
+          events.push({ k: "cmd", cmd: call.cmd, failed: x.is_error === true, output: output.slice(-2000), ts, size: (textOf(x.content) || output).length, ...(stopped ? { stopped } : {}) });
         }
       }
     }
@@ -89,7 +91,7 @@ export function readClaude(file: string): Session {
         if (text) messages.push({ ts, dir: "out", from: null, to: to ? [to] : [], text: stripPrivate(text).slice(0, 2000) });
       }
       const path = x?.type === "tool_use" && FILE_TOOLS.has(x.name) ? x.input?.file_path ?? x.input?.notebook_path ?? x.input?.path ?? x.input?.skill : undefined;
-      if (typeof path === "string" && path) pending.set(x.id, { tool: String(x.name).toLowerCase(), path, ...(typeof x.input?.pattern === "string" ? { pattern: x.input.pattern } : {}) });
+      if (typeof path === "string" && path) pending.set(x.id, { tool: String(x.name).toLowerCase(), path, ...(typeof x.input?.pattern === "string" ? { pattern: x.input.pattern } : {}), ...(x.input?.offset != null || x.input?.limit != null ? { part: true } : {}) });
     }
   }
   const base: Session = { id: sessionIdOf(file), tool: "claude-code", cwd, clientVersion, events, unknown, branch: branch || undefined, file, usage, turns, ...(model ? { model } : {}), ...(messages.length ? { messages } : {}) };

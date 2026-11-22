@@ -4,7 +4,7 @@ import { redact } from "../privacy/redact.js";
 import { cosine, type Embed } from "../embed/model.js";
 import type { Session } from "../logs/types.js";
 
-export type Signal = "repeat" | "correction" | "failure_then_fix" | "mistake_returned" | "explained" | "loop" | "refetch" | "stopped" | "confused" | "friction" | "wrong_path" | "big_file" | "skimmed" | "stated" | "promised" | "sent_back" | "missed" | "unanswered";
+export type Signal = "repeat" | "correction" | "failure_then_fix" | "mistake_returned" | "explained" | "loop" | "refetch" | "stopped" | "confused" | "friction" | "wrong_path" | "big_file" | "big_output" | "reread" | "one_by_one" | "skimmed" | "stated" | "promised" | "sent_back" | "missed" | "unanswered";
 export type Moment = {
   signal: Signal; text: string; quotes: { tool: string; session: string; ts: string; quote: string }[];
   sessions: number; days: number; wordings: number; tools: string[]; last: string; vector?: Float32Array;
@@ -122,7 +122,7 @@ export async function findMoments(sessions: Session[], embed: Embed, opts: { cut
     if (kept) moments.push(m);
     opts.trace?.({ signal: "correction", texts: c.items.map((i) => `${i.text}   ⟵ after: ${i.before?.slice(0, 100) ?? ""}`), times: c.items.length, sessions: m.sessions, wordings: m.wordings, days: m.days, hours: spanHours(c), kept });
   }
-  moments.push(...commandMoments(sessions), ...explainedMoments(sessions), ...intentMoments(sessions), ...pathMoments(sessions), ...skimMoments(sessions), ...statedMoments(sessions), ...promisedMoments(sessions));
+  moments.push(...commandMoments(sessions), ...explainedMoments(sessions), ...intentMoments(sessions), ...pathMoments(sessions), ...wasteMoments(sessions), ...skimMoments(sessions), ...statedMoments(sessions), ...promisedMoments(sessions));
   return moments;
 }
 
@@ -456,8 +456,89 @@ function skimMoments(sessions: Session[]): Moment[] {
   }];
 }
 
-/** Wasted effort without the embedding model: failing, looping and re-run commands, stops, and wrong paths. For insights. */
-export function effortMoments(sessions: Session[]): Moment[] { return [...commandMoments(sessions), ...pathMoments(sessions)]; }
+/** A command's output above this many characters (about 10,000 tokens) is more than an agent needs to read. */
+export const BIG_OUTPUT = 40_000;
+/** What a narrowed command would still show (about 2,000 tokens); only output above it counts as wasted. */
+export const ENOUGH_OUTPUT = 8_000;
+/** Reads of one unchanged file in a session before it counts as re-reading. */
+export const REREAD_MIN = 3;
+/** The same kind of command run on one thing after another, in a row, before a script would have done it at once. */
+export const STEP_MIN = 6;
+/** File tools that change a file, so a later read of it is a fresh read. */
+const WRITES = /^(edit|multiedit|write|notebookedit|str_replace|create)/;
+
+/**
+ * Token waste that SoL-Pi and Anthropic's code-execution work point at, read from muninn's own session logs:
+ * commands that print far more than anyone reads (narrow them, or keep the tail), files read again and again
+ * without changing (remember them, or search them), and the same step done on one thing after another
+ * (a short script does them all in one turn, and each turn re-reads the whole conversation).
+ */
+function wasteMoments(sessions: Session[]): Moment[] {
+  const out: Moment[] = [];
+  type Hit = { session: string; tool: string; ts: string; quote: string; tokens: number };
+  const groups = { big_output: new Map<string, Hit[]>(), reread: new Map<string, Hit[]>(), one_by_one: new Map<string, Hit[]>() };
+  const add = (m: Map<string, Hit[]>, k: string, h: Hit) => m.set(k, [...(m.get(k) ?? []), h]);
+  for (const s of sessions) {
+    const cwd = s.cwd || "/";
+    const reads = new Map<string, number>();
+    let run: { key: string; cmds: string[]; ts: string } | null = null;
+    const endRun = () => {
+      if (run && new Set(run.cmds).size >= STEP_MIN) add(groups.one_by_one, run.key, { session: s.id, tool: s.tool, ts: run.ts, quote: redact(`${run.cmds.length} runs in a row, e.g. $ ${run.cmds[0]!.replace(/\s+/g, " ").slice(0, 120)}  then  $ ${run.cmds.at(-1)!.replace(/\s+/g, " ").slice(0, 120)}`).slice(0, 300), tokens: 0 });
+      run = null;
+    };
+    for (const e of s.events) {
+      if (e.k === "typed" || e.k === "interrupt") { endRun(); continue; }
+      if (e.k === "agent") continue;
+      if (e.k === "file") {
+        endRun();
+        const path = shortPath(cwd, abs(cwd, e.path));
+        if (WRITES.test(e.tool)) { reads.delete(path); continue; }
+        if (e.tool !== "read" || e.failed || e.part) continue;
+        const n = (reads.get(path) ?? 0) + 1; reads.set(path, n);
+        // The first read is needed; every later one of an unchanged file is the waste.
+        if (n >= 2) add(groups.reread, path, { session: s.id, tool: s.tool, ts: e.ts, quote: redact(`read ${path} for the ${n}${n === 2 ? "nd" : n === 3 ? "rd" : "th"} time, unchanged`), tokens: Math.ceil((e.size ?? e.output.length) / 4) });
+        if (e.size && e.size > BIG_OUTPUT) add(groups.big_output, `read ${path}`, { session: s.id, tool: s.tool, ts: e.ts, quote: redact(`read ${path}  →  ${Math.round(e.size / 4000)}k tokens`), tokens: Math.ceil((e.size - ENOUGH_OUTPUT) / 4) });
+        continue;
+      }
+      if (e.stopped) { endRun(); continue; }
+      // A shell command that names a file may change it: the next read of that file is fresh.
+      for (const p of reads.keys()) if (e.cmd.includes(basename(p))) reads.delete(p);
+      const key = normCommand(e.cmd);
+      if (e.size && e.size > BIG_OUTPUT && key) add(groups.big_output, key, { session: s.id, tool: s.tool, ts: e.ts, quote: shown(e.cmd, e.output).slice(0, 200) + `  (${Math.round(e.size / 4000)}k tokens)`, tokens: Math.ceil((e.size - ENOUGH_OUTPUT) / 4) });
+      if (!key || e.failed || BENIGN.test(key)) { endRun(); continue; }
+      if (run && run.key === key) { run.cmds.push(e.cmd); run.ts = e.ts; }
+      else { endRun(); run = { key, cmds: [e.cmd], ts: e.ts }; }
+    }
+    endRun();
+  }
+  const base = (hits: Hit[]) => ({
+    quotes: hits.slice(-3).map(({ tokens: _, ...h }) => h), sessions: new Set(hits.map((h) => h.session)).size,
+    days: new Set(hits.map((h) => h.ts.slice(0, 10))).size, wordings: 1, tools: [...new Set(hits.map((h) => h.tool))], last: hits.at(-1)!.ts,
+    wasted: hits.reduce((a, h) => a + h.tokens, 0),
+  });
+  for (const [key, hits] of groups.big_output) {
+    if (hits.length < 2) continue;
+    const m = base(hits);
+    out.push({ signal: "big_output", text: redact(`\`${key}\` showed the agent more than ${Math.round(BIG_OUTPUT / 4000)}k tokens of output ${hits.length} times, in ${m.sessions} session(s)`),
+      context: `About ${m.wasted} tokens above what a narrowed command would show.`, ...m });
+  }
+  for (const [path, hits] of groups.reread) {
+    // Re-reading once can be ordinary (after a long detour); twice in one session, or again in another session, is a habit.
+    const perSession = new Map<string, number>(); for (const h of hits) perSession.set(h.session, (perSession.get(h.session) ?? 0) + 1);
+    if (![...perSession.values()].some((n) => n >= REREAD_MIN - 1) && perSession.size < 2) continue;
+    const m = base(hits);
+    out.push({ signal: "reread", text: redact(`\`${path}\` was read again without changing, ${hits.length} times in ${m.sessions} session(s)`),
+      context: `About ${m.wasted} tokens of the same file read again.`, ...m });
+  }
+  for (const [key, hits] of groups.one_by_one) {
+    const m = base(hits);
+    out.push({ signal: "one_by_one", text: redact(`\`${key}\` was run on one thing after another, ${STEP_MIN} or more times in a row, in ${m.sessions} session(s); a script or loop would do them in one step`), ...m, wasted: undefined });
+  }
+  return out;
+}
+
+/** Wasted effort without the embedding model: failing, looping and re-run commands, stops, wrong paths, oversized output, re-reads and step-by-step runs. For insights. */
+export function effortMoments(sessions: Session[]): Moment[] { return [...commandMoments(sessions), ...pathMoments(sessions), ...wasteMoments(sessions)]; }
 
 /**
  * A standing instruction said outright: "from now on…", "let's branch and merge for features with PRs",
