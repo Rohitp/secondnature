@@ -498,6 +498,8 @@ button, a, input, select, textarea { transition: background-color .14s ease, col
 @media (prefers-reduced-motion: reduce) { main.enter .grid > * { animation: none; } button, a, input, select, textarea, :root { transition: none; } }
 .wordedby { align-self: flex-start; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 9px; background: var(--chip); color: var(--chip-ink); }
 .state.warn { background: var(--warn-bg); color: var(--warn); }
+.prwhy { margin: 0; padding: 14px 16px; border-radius: var(--radius-md); background: var(--fill); white-space: pre-wrap; font: 13px/1.6 var(--mono); color: var(--ink); }
+.sesstail { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: var(--radius-md); background: var(--fill); font-size: 13px; }
 </style>
 <script>try { const t = localStorage.getItem("theme"); if (t) document.documentElement.dataset.theme = t; } catch { /* the OS decides */ }</script>
 </head>
@@ -815,7 +817,9 @@ function planSection() {
   return `<header class="homehead"><div><h1>Plan for ${esc(data.plan.branch)}</h1>
       <p class="lead">${merged ? "This branch is merged, so its work is finished. " : ""}${empty ? "Each branch is its own piece of work. secondnature builds its plan from the sessions on it, and you can write your own." : "Built from your sessions on this branch. Agents get it when a session starts here. You can edit any line."}</p></div>
       <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center"><label class="speak" for="planBranch">Branch <select id="planBranch" class="sel mono" style="min-height:44px">${data.plan.branches.map((b) => `<option value="${esc(b.name)}" ${b.name === data.plan.branch ? "selected" : ""}>${esc(b.name)}${b.name === data.plan.checkedOut ? " (checked out)" : b.merged ? " (merged)" : ""}</option>`).join("")}</select></label>
+      <button class="btn2 big" data-pr-why aria-expanded="${prOpen}">Write the pull request’s “why”</button>
       <button class="btn2 big" data-ask-open>Ask about this branch</button></div></header>
+    ${prOpen ? prWhyCard() : ""}
     <div class="homegrid">
     <div class="homecol">
       <section class="card pad" aria-labelledby="goalh" style="gap:6px">
@@ -835,13 +839,46 @@ function planSection() {
     <div class="homecol">
       <section class="card pad" aria-labelledby="hoh">
         <div style="display:flex;flex-direction:column;gap:2px"><h2 id="hoh">Where you left off</h2>
-          <span class="sub">${ho ? `Written when your last session here ended, in ${esc(TOOL_NAMES[ho.tool] || ho.tool)}, ${esc(ago(ho.created_at))}. The next session on this branch is told this, in any tool.` : "Written when a session on this branch ends. The next session here is told it, in any tool."}</span></div>
-        ${ho ? `<dl class="hodl">${["Done", "Open", "Decided", "Next"].filter((k) => hp[k]).map((k) => `<dt>${HO_LABEL[k]}</dt><dd>${esc(clip(hp[k], 400))}</dd>`).join("")}</dl>` : `<p>No session on ${esc(data.plan.branch)} has ended with a summary yet.</p>`}
+          <span class="sub">${ho ? `Written by your Claude when your last session here ended, in ${esc(TOOL_NAMES[ho.tool] || ho.tool)}, ${esc(ago(ho.created_at))}. The next session on this branch is told this, in any tool.` : "Written when a session on this branch ends. The next session here is told it, in any tool."}</span></div>
+        ${ho ? `<dl class="hodl">${["Done", "Open", "Decided", "Next"].filter((k) => hp[k]).map((k) => `<dt>${HO_LABEL[k]}</dt><dd>${esc(clip(hp[k], 400))}</dd>`).join("")}</dl>
+          ${ho.session ? `<button class="linkbtn" style="align-self:flex-start;min-height:32px" aria-expanded="${sessOpen === ho.session}" data-sess="${esc(ho.session)}">${sessOpen === ho.session ? "Hide that session" : "Show that session"}</button>${sessOpen === ho.session ? sessionTailBox(ho.session) : ""}` : ""}`
+          : `<p>No session on ${esc(data.plan.branch)} has ended with a summary yet.</p>`}
       </section>
       ${branchRuns.length ? `<section class="card" aria-labelledby="runsh"><div class="cardhead"><h2 id="runsh">Runs on ${esc(data.plan.branch)}</h2><span class="sub">Agents working together</span></div><ul class="group flat">${branchRuns.slice(0, 3).map((r) => { const n = data.runInfo[r.id]?.numbers; return `<li><div class="row"><button class="main" data-run-open="${esc(r.id)}"><div class="title" style="font-weight:500">${esc(runName(r))}</div><div class="sub">${r.roles.filter((x) => x !== "main").length} roles${n?.rework ? ` · <span class="status warn">${n.rework} fix${n.rework === 1 ? "" : "es"} after approval</span>` : ""}</div></button></div></li>`; }).join("")}</ul></section>` : ""}
       <section class="card" style="padding:6px 18px"><div class="row" style="padding:10px 0;min-height:64px"><div class="main" style="cursor:default"><div class="title" style="font-weight:600">Keep this plan in the repo as PLAN.md</div><div class="sub" style="font-size:13px">So teammates and their agents can read it. Written at the root of the repo for the branch checked out, and reviewed in pull requests like code.</div></div>
         <button class="switch" role="switch" aria-checked="${!!data.plan.fileOn}" aria-label="Keep this plan in the repo as PLAN.md" data-plan-file></button></div></section>
     </div></div>`;
+}
+/* The pull request's "why": written by your Claude from the branch's plan and its sessions' summaries, kept until you
+   ask for a new one. You read it and paste it; nothing is posted anywhere. */
+let prOpen = false, prBusy = false, prErr = "", prCopied = false; const prWhyFor = {};
+const prKey = () => `${repo}:${data.plan?.branch}`;
+function prWhyCard() {
+  const w = prWhyFor[prKey()];
+  if (w === undefined && !prBusy) loadPrWhy();
+  return `<section class="s12 card pad" aria-label="Pull request description" style="gap:10px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+        <span style="display:flex;flex-direction:column"><strong style="color:var(--ink)">Why this change, for the pull request</strong>
+          <span class="sub">${prBusy ? "Your Claude is writing it from this branch’s plan and sessions…" : w ? `Written by your Claude from ${w.sessions} session${w.sessions === 1 ? "" : "s"}, ${esc(ago(w.at))} · read it before you paste it` : "Written by your Claude from this branch’s plan and the summaries its sessions left. One call to your Claude."}</span></span>
+        <span style="display:flex;gap:8px">${w && !prBusy ? `<button class="btn2" data-pr-copy>${prCopied ? "Copied" : "Copy"}</button><button class="btn2" data-pr-write>Write again</button>` : prBusy ? "" : `<button class="btnlink" data-pr-write>Write it</button>`}</span></div>
+      ${prErr ? `<p role="alert" style="color:var(--warn)">${esc(prErr)}</p>` : ""}
+      ${prBusy ? `<p class="sub"><span class="spin" aria-hidden="true" style="display:inline-block;vertical-align:-2px"></span> Usually under a minute.</p>` : w ? `<pre class="prwhy">${esc(w.text)}</pre>` : ""}
+    </section>`;
+}
+async function loadPrWhy() { const k = prKey(); prWhyFor[k] = null; prWhyFor[k] = await api("/api/pr-why?" + q({ repo, branch: data.plan.branch })).catch(() => null); draw(); }
+async function writePrWhy() {
+  const k = prKey(); prBusy = true; prErr = ""; prCopied = false; draw();
+  try { prWhyFor[k] = await api("/api/pr-why", { repo, branch: data.plan.branch }); } catch (e) { prErr = e.message; }
+  prBusy = false; draw();
+}
+/* "Show that session": the last few exchanges of the session that wrote the handoff, as stored (redacted). */
+let sessOpen = null; const sessTail = {};
+function sessionTailBox(id) {
+  const t = sessTail[id];
+  if (t === undefined) { sessTail[id] = null; api("/api/session-tail?" + q({ session: id })).then((r) => { sessTail[id] = r || false; draw(); }).catch(() => { sessTail[id] = false; draw(); }); }
+  if (!t) return `<div class="sesstail"><span class="sub">${t === false ? "That session isn’t stored any more." : "Loading…"}</span></div>`;
+  return `<div class="sesstail"><span class="sub">${esc(TOOL_NAMES[t.tool] || t.tool)} · ${esc(shortDate(t.from))} ${esc(clock(t.from))} to ${esc(clock(t.to))} · stored redacted</span>
+    ${t.exchanges.map((x) => `${x.you ? `<span><strong>You:</strong> ${esc(clip(x.you, 300))}</span>` : ""}${x.agent ? `<span><strong>Agent:</strong> ${esc(clip(x.agent, 300))}</span>` : ""}`).join("")}</div>`;
 }
 async function planDo(body) { const r = await api("/api/plan", { repo, branch: data.plan.branch, ...body }); data.plan = r; planEdit = null; draw(); }
 
@@ -1870,6 +1907,10 @@ document.addEventListener("click", async (e) => {
   try {
     if (el.dataset.rulesBack) { el.disabled = true; await api("/api/rules", { repo, tool: el.dataset.rulesBack, on: true }); toast("Put back. Its agents are told your lessons again from their next chat."); await refresh(); return; }
     if (el.dataset.planBranch && el.dataset.tab === "plan" && el.dataset.planBranch !== data.plan?.branch) { planBranch = el.dataset.planBranch; tab = "plan"; runPage = null; rememberPick(); await refresh(); window.scrollTo(0, 0); return; }
+    if (el.dataset.prWhy !== undefined) { prOpen = !prOpen; prErr = ""; draw(); return; }
+    if (el.dataset.prWrite !== undefined) { await writePrWhy(); return; }
+    if (el.dataset.prCopy !== undefined) { await navigator.clipboard.writeText(prWhyFor[prKey()]?.text || ""); prCopied = true; draw(); return; }
+    if (el.dataset.sess) { sessOpen = sessOpen === el.dataset.sess ? null : el.dataset.sess; draw(); return; }
     if (el.dataset.themePick) { document.documentElement.dataset.theme = el.dataset.themePick; try { localStorage.setItem("theme", el.dataset.themePick); } catch { /* kept until reload */ } drawSide(); return; }
     if (el.dataset.open) { open = open === el.dataset.open ? null : el.dataset.open; draw(); return; }
     if (el.dataset.frStart !== undefined) { el.disabled = true; await api("/api/firstrun", {}); frStep = 2; await loadFirstRun(); draw(); window.scrollTo(0, 0); return; }
