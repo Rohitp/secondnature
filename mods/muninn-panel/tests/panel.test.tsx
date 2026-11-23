@@ -38,7 +38,9 @@ test('a lesson to review is the one thing on top, on every surface', async ($, o
     expect((await ui.find({ type: 'Text', text: /A new lesson to review/ }))?.text).toBe('A new lesson to review')
     expect(await ui.find({ type: 'Button', key: 'keep-w1' })).toBeTruthy()
     expect((await ui.find({ type: 'Text', text: /^Where you left off/i }))).toBeTruthy()
-    expect((await ui.find({ type: 'Text', text: /^This week muninn told your agents/ }))).toBeTruthy()
+    expect((await ui.find({ type: 'Text', text: /^Lessons were told in 2 sessions this week/ }))).toBeTruthy()
+    expect((await ui.find({ type: 'Text', text: /^Told this session · 1/i }))).toBeTruthy()
+    expect(await ui.find({ type: 'Button', key: 'helped-l1' })).toBeTruthy()
     await ui.unmount()
   }
 })
@@ -48,6 +50,15 @@ test('a loop happening now goes on top, by its short name', async ($, on) => {
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect((await ui.find({ type: 'Text', text: /failed 3 times the same way/ }))?.text).toBe('ruff format failed 3 times the same way.')
   expect(await ui.find({ type: 'Text', text: /A new lesson to review/ })).toBeFalsy()
+  await ui.unmount()
+})
+
+test('a kept lesson that fits a loop but was never told: one button tells the agent now', async ($, on) => {
+  await start($, on, { ...DATA, loops: [{ name: 'pytest', n: 3, err: 'ModuleNotFoundError', tokens: 900, at: new Date().toISOString(), told: false, lesson: { id: 'k1', text: 'Run Python through poetry run python.', why: 'this session started before you kept it' } }] })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /pytest failed the same way 3 times in this session/ }))).toBeTruthy()
+  expect((await ui.find({ type: 'Text', text: /It wasn't told, because this session started before you kept it/ }))).toBeTruthy()
+  expect(await ui.find({ type: 'Button', key: 'tell-k1' })).toBeTruthy()
   await ui.unmount()
 })
 

@@ -272,6 +272,7 @@ async function main() {
     case "reject": return (await import("./commands/panel.js")).reject(args);
     case "dial": return (await import("./commands/panel.js")).dial(args);
     case "feedback": return (await import("./commands/panel.js")).feedback(args);
+    case "tell": return (await import("./commands/panel.js")).tell(args);
     case "ui": {
       if (!args.includes("--detach")) return (await import("./ui/server.js")).serve(args);
       console.log(await (await import("./ui/detach.js")).uiDetached({ open: !args.includes("--no-open") }));

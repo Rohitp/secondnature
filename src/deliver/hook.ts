@@ -79,7 +79,11 @@ export async function deliver(db: Client, client: string, input: HookInput): Pro
   const loopHint = failed(event, input) && session ? await trackLoop(db, session, repo, input) : null;
   const dial = await getDial(db, repo);
   const midTask = event === "UserPromptSubmit" || event.startsWith("PostToolUse");
-  if (dial === "quiet" || (dial === "start" && midTask)) { await log("paused"); return null; }
+  // Lessons you asked the panel to tell this session now: sent on its next turn, whatever the dial says.
+  const asked = midTask && session ? await takeAsked(db, session) : [];
+  for (const a of asked) await log("sent", { id: a.id, pattern: ASKED }, tokens(a.text));
+  const askedText = asked.length ? ["The engineer asked muninn to tell you this now, from a lesson they kept:", ...asked.map((a) => `- ${a.text}`)].join("\n") : null;
+  if (dial === "quiet" || (dial === "start" && midTask)) { if (askedText) return askedText; await log("paused"); return null; }
   // Switched-off lessons stay kept but are never told.
   // In a team of agents, a role's lessons go only to that role: a subagent by its type, a session by its worktree's name.
   const { worktreeOf } = await import("../workflow/runs.js");
@@ -161,8 +165,9 @@ export async function deliver(db: Client, client: string, input: HookInput): Pro
     searchable ? `muninn also keeps ${searchable} note(s) and lesson(s) about this work that aren't sent automatically. Before guessing how something here works or runs, look it up with ${via("search_history", `muninn ask "your question"`)}` : "",
     stored ? `muninn keeps ${stored} earlier session(s) in this repo. Look things up instead of guessing when:\n- the engineer refers to past work ("like last time", "the bug we fixed", "what did we decide"): ${via("search_history", `muninn recall "what you're looking for"`)}\n- you're about to change something that was decided or fixed before: ${via("get_related", `muninn related "that decision or fix"`)} shows why it is the way it is and what depends on it${mcp ? "\n- the work involves agent teams, subagents or workflows: the muninn tool get_runs shows how earlier runs went, by role" : ""}` : "",
   ].filter(Boolean).join("\n") || null;
-  if (!out.length && !waiting && !handoff && !plan && !loopHint && !askLine) { await log("no_match"); return null; }
+  if (!out.length && !waiting && !handoff && !plan && !loopHint && !askLine && !askedText) { await log("no_match"); return null; }
   const lines: string[] = [];
+  if (askedText) lines.push(askedText, "");
   // The plan, the look-it-up reminder and loop warnings are told too: log them, so the page can show all of it.
   if (loopHint) await log("sent", undefined, tokens(loopHint), "loop");
   if (plan) await log("sent", undefined, tokens(plan), "plan");
@@ -177,6 +182,20 @@ export async function deliver(db: Client, client: string, input: HookInput): Pro
   return lines.join("\n");
 }
 
+/** Marks a delivery the engineer asked for from the panel, so the receipt can say so. */
+export const ASKED = "(asked)";
+/** Meta key holding lessons to tell one session on its next message or failed command. */
+export const tellKey = (session: string) => `tell:${session}`;
+/** Takes the lessons queued for this session by "Tell the agent now", once. */
+async function takeAsked(db: Client, session: string): Promise<{ id: string; text: string }[]> {
+  const key = tellKey(session);
+  const v = (await db.execute({ sql: "SELECT value FROM meta WHERE key=?", args: [key] })).rows[0]?.value;
+  if (!v) return [];
+  await db.execute({ sql: "DELETE FROM meta WHERE key=?", args: [key] });
+  const ids = JSON.parse(String(v)) as string[];
+  if (!ids.length) return [];
+  return (await db.execute({ sql: `SELECT id, text FROM lessons WHERE status='live' AND id IN (${ids.map(() => "?").join(",")})`, args: ids })).rows.map((r) => ({ id: String(r.id), text: String(r.text) }));
+}
 export const hookOutput = (event: string, text: string) => JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: text } });
 
 const failed = (event: string, input: HookInput) => event === "PostToolUseFailure" || (event === "PostToolUse" && codexFailed(input.tool_response));
