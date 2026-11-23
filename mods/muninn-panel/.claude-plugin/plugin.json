@@ -1,1 +1,1 @@
-{"name": "muninn-panel", "version": "0.4.0", "description": "A side panel showing what muninn told this session and why, with one-click fixes; and muninn's MCP server, so agents can ask it questions", "types": "./types/index.d.ts", "author": {"name": "Rohit"}}
+{"name": "muninn-panel", "version": "0.5.0", "description": "A side panel showing what muninn told this session and why, with one-click fixes; and muninn's MCP server, so agents can ask it questions", "types": "./types/index.d.ts", "author": {"name": "Rohit"}}

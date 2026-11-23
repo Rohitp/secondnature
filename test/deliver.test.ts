@@ -110,3 +110,33 @@ describe("lessons kept only for looking up", () => {
     expect(await start("b")).toContain('muninn ask "your question"');
   });
 });
+describe("telling a lesson now, from the panel", () => {
+  it("sends it on the session's next message, once, even when secondnature speaks only when asked", async () => {
+    const id = await lesson("Run Python through poetry run python", { keyword: "poetry" });
+    const db = await openDb();
+    const { setDial } = await import("../src/store/dial.js");
+    await setDial(db, repo, "quiet");
+    const { tellKey } = await import("../src/deliver/hook.js");
+    await db.execute({ sql: "INSERT INTO meta (key,value) VALUES (?,?)", args: [tellKey("s1"), JSON.stringify([id])] });
+    const out = await run({ hook_event_name: "UserPromptSubmit", prompt: "try again" });
+    expect(out).toContain("asked muninn to tell you this now");
+    expect(out).toContain("poetry run python");
+    expect(await run({ hook_event_name: "UserPromptSubmit", prompt: "and again" })).toBeNull();
+    const { whySent } = await import("../src/commands/panel.js");
+    const row = (await db.execute({ sql: "SELECT event, source, trigger_id FROM deliveries WHERE lesson_id=? AND outcome='sent'", args: [id] })).rows[0]!;
+    expect(whySent(String(row.event), null, String(row.trigger_id))).toBe("you asked from the panel");
+  });
+});
+describe("the panel's loop card", () => {
+  it("names a kept lesson whose word matches the loop, when this session wasn't told it", async () => {
+    const id = await lesson("Run tests through poetry run pytest", { keyword: "pytest" });
+    const db = await openDb();
+    const { setDial } = await import("../src/store/dial.js");
+    await setDial(db, repo, "start");
+    for (let i = 0; i < 3; i++) await deliver(db, "claude-code", { hook_event_name: "PostToolUseFailure", session_id: "s3", cwd, tool_input: { command: "pytest -q" }, error: "ModuleNotFoundError: No module named 'x'" });
+    const { panelData } = await import("../src/commands/panel.js");
+    const p = await panelData(db, "s3", cwd);
+    expect(p.loops[0]?.lesson?.id).toBe(id);
+    expect(p.loops[0]?.lesson?.why).toBe("secondnature is set to speak up only at session start here");
+  });
+});

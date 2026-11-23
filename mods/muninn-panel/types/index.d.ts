@@ -13,7 +13,7 @@ export type PanelData = {
   cameBack: { id: string; text: string; full?: string; verdict: string; fix: string | null }[]
   carry: Carried[]
   /** Commands that failed the same way 3 or more times in a row this session, newest first. */
-  loops: { name: string; n: number; err: string; tokens: number; at: string; told: boolean }[]
+  loops: { name: string; n: number; err: string; tokens: number; at: string; told: boolean; lesson?: { id: string; text: string; why: string } | null }[]
   /** The branch's plan in short. */
   plan: { goal: string | null; status: string | null; next: string[] } | null
   handoff: { text: string; age: string; tool: string; delivered: boolean } | null

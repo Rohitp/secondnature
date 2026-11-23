@@ -8,7 +8,7 @@ import { decide, getLesson } from "../store/lessons.js";
 import { shortRepo } from "./ask.js";
 export { shortRepo };
 import { defaultRoute } from "./review.js";
-import { shortCommand } from "../deliver/hook.js";
+import { ASKED, shortCommand, tellKey } from "../deliver/hook.js";
 
 export type PanelData = {
   repo: string | null; repoShort: string; branch: string | null;
@@ -22,6 +22,7 @@ export type PanelData = {
 
 /** Why a lesson was sent, in words, from the delivery row. */
 export function whySent(event: string, source: string | null, keyword: string | null): string {
+  if (keyword === ASKED) return "you asked from the panel";
   if ((event === "SessionStart" || event === "SubagentStart") && keyword === "CLAUDE.local.md") return "always-on, read from CLAUDE.local.md";
   if (event === "SessionStart") return source === "compact" ? "always-on, sent again after compaction" : "always-on, at session start";
   if (event === "SubagentStart") return "always-on, for a subagent";
@@ -54,7 +55,21 @@ export async function panelData(db: Client, session: string | null, cwd: string)
   const back = Number((await db.execute({ sql: "SELECT count(DISTINCT e.lesson_id) n FROM evidence e JOIN lessons l ON l.id=e.lesson_id WHERE l.status='live' AND e.seen_at>=? AND e.seen_at>=coalesce(l.reviewed_at,l.created_at)", args: [since] })).rows[0]?.n ?? 0);
   const c = (await db.execute({ sql: "SELECT count(*) n, sum(cost_usd) cost, count(cost_usd) priced FROM llm_calls WHERE ts>=?", args: [since] })).rows[0]!;
   const loopRows = session ? (await db.execute({ sql: "SELECT cmd,n,err,tokens,last_ts,hinted FROM live_loops WHERE session=? AND n>=3 ORDER BY last_ts DESC LIMIT 5", args: [session] })).rows : [];
-  const loops = loopRows.map((r) => ({ name: shortCommand(String(r.cmd)), n: Number(r.n), err: String(r.err), tokens: Number(r.tokens), at: String(r.last_ts), told: Number(r.hinted) > 0 }));
+  // A kept lesson whose word matches the looping command or its error, but that this session wasn't told: offer to tell it now.
+  const { matches } = await import("../deliver/hook.js");
+  const keyed = loopRows.length ? (await db.execute({ sql: "SELECT l.id, l.text, l.plain, coalesce(l.reviewed_at,l.created_at) kept, t.pattern FROM lessons l JOIN triggers t ON t.lesson_id=l.id WHERE l.status='live' AND l.off=0 AND (l.scope='global' OR l.repo_id IS ?)", args: [repo] })).rows : [];
+  const toldHere = new Set(sent.map((x) => x.id));
+  const dialNow = loopRows.length ? await (await import("../store/dial.js")).getDial(db, repo) : "anytime";
+  const started = session ? String((await db.execute({ sql: "SELECT min(ts) t FROM deliveries WHERE session=?", args: [session] })).rows[0]?.t ?? "") : "";
+  const loops = loopRows.map((r) => {
+    const hay = `${r.cmd}\n${r.err}`;
+    const k = keyed.find((x) => !toldHere.has(String(x.id)) && matches(String(x.pattern), hay));
+    const why = started && String(k?.kept) > started ? "this session started before you kept it"
+      : dialNow !== "anytime" ? `secondnature is set to speak up ${dialNow === "quiet" ? "only when asked" : "only at session start"} here`
+      : `its word "${k?.pattern}" wasn't in a message or failed command that reached secondnature`;
+    const lesson = k ? { id: String(k.id), text: String(k.plain ?? k.text), why } : null;
+    return { name: shortCommand(String(r.cmd)), n: Number(r.n), err: String(r.err), tokens: Number(r.tokens), at: String(r.last_ts), told: Number(r.hinted) > 0, lesson };
+  });
   return {
     repo, repoShort: shortRepo(repo), branch, sent, handoff, loops,
     waiting: { count: waitingRows.length, top },
@@ -129,4 +144,18 @@ export async function reject(args: string[]) {
   if (!l || l.status !== "proposed") { console.error("No lesson to review with that id."); process.exitCode = 1; return; }
   await decide(db, l.id, { status: "rejected" });
   console.log(`Not kept: ${l.id.slice(0, 8)}. muninn won't suggest it again.`);
+}
+
+
+/** `muninn tell <lesson-id> --session <id>`: tell a kept lesson to that session's agent on its next turn. */
+export async function tell(args: string[]) {
+  const i = args.indexOf("--session"); const session = i >= 0 ? args[i + 1] : null; const id = args.find((a, n) => n !== i && n !== i + 1 && !a.startsWith("--"));
+  if (!id || !session) { console.error("Usage: muninn tell <lesson-id> --session <session-id>"); process.exitCode = 1; return; }
+  const db = await openDb();
+  const l = await getLesson(db, id);
+  if (!l || l.status !== "live") { console.error("No kept lesson with that id."); process.exitCode = 1; return; }
+  const key = tellKey(session);
+  const now = JSON.parse(String((await db.execute({ sql: "SELECT value FROM meta WHERE key=?", args: [key] })).rows[0]?.value ?? "[]")) as string[];
+  await db.execute({ sql: "INSERT OR REPLACE INTO meta (key,value) VALUES (?,?)", args: [key, JSON.stringify([...new Set([...now, l.id])])] });
+  console.log("Queued. The agent is told it with your next message, or its next failed command.");
 }

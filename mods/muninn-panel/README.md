@@ -1,6 +1,6 @@
 # muninn panel for Claude Code
 
-A side panel that shows what muninn told this Claude Code session, and why: each lesson sent ("always-on, at session start", "your prompt said "python"") with a retire button, the handoff from the last session on this branch, the top lessons waiting for review with one-click Keep and Reject, and this week's numbers, including what muninn's own AI calls cost. The status line shows how many lessons were sent.
+A side panel in Claude Code that shows what secondnature told this session, and why. On top, the one thing to do now: a command looping in this session (and, when a lesson you kept fits it but this session never got it, a "Tell the agent now" button that sends it with your next message), a kept problem that came back, or a new lesson to keep. Below: each thing told this session with why and Helped / Wrong, where you left off on this branch, how many new lessons wait, and the week in a sentence. The "Speaks up to this session" picker sets how often it speaks up. The status line shows how many things were told.
 
 Install it from a terminal, after installing secondnature (`npm install -g secondnature`):
 
