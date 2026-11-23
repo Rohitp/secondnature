@@ -382,6 +382,42 @@ pre code { background: none; padding: 0; }
 .switchbtn .switch { pointer-events: none; display: inline-block; }
 @media (max-width: 900px) { .lpane { position: static; } }
 @media (max-width: 600px) { .quote { flex-direction: column; gap: 4px; } .qmeta { width: auto; flex-direction: row; gap: 8px; } }
+/* Is it helping?: a stacked bar per day, a table per kept lesson, and output trims. */
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--body); margin-bottom: 14px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.sw.covered { background: var(--chip-ink); } .sw.other { background: #9db8ff; } .sw.mark { width: 0; height: 12px; border-left: 2px dashed var(--warn-dot); border-radius: 0; }
+.chart { position: relative; height: 240px; margin-left: 28px; }
+.cgrid { position: absolute; inset: 0; }
+.gl { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--line-soft); }
+.gl:first-child { border-top: 1px solid var(--line-strong); }
+.gl span { position: absolute; left: -28px; top: -9px; width: 22px; text-align: right; font: 11px/16px var(--mono); color: var(--muted); }
+.bars { position: absolute; inset: 0; display: flex; gap: 4px; }
+.bar { position: relative; flex: 1 1 0; min-width: 0; display: flex; flex-direction: column-reverse; padding: 0 4px; border-radius: 6px; outline: none; }
+.bar:hover, .bar:focus-visible { background: var(--hover); }
+.bar:focus-visible { box-shadow: 0 0 0 2px var(--link); }
+.bseg { display: block; width: 100%; }
+.bseg.covered { background: var(--chip-ink); } .bseg.other { background: #9db8ff; border-radius: 0 0 2px 2px; }
+.bar .bseg:last-of-type { border-radius: 4px 4px 0 0; }
+.keptmark { position: absolute; top: 0; bottom: 0; left: -3px; border-left: 1.5px dashed var(--warn-dot); z-index: 1; }
+.keptmark span { position: absolute; top: -4px; left: 2px; font-size: 11px; font-weight: 600; color: var(--warn); background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 4px; padding: 0 5px; white-space: nowrap; }
+.tip { display: none; position: absolute; z-index: 5; bottom: calc(100% - 60px); left: 50%; transform: translateX(-50%); min-width: 240px; background: var(--ink); color: var(--group); border-radius: 10px; padding: 12px 14px; font-size: 13px; box-shadow: 0 8px 24px rgba(20,23,31,.2); pointer-events: none; flex-direction: column; gap: 4px; }
+.tip.right { left: auto; right: 0; transform: none; }
+.tip span { display: flex; align-items: center; gap: 6px; } .tip b { margin-left: auto; font-family: var(--mono); }
+.tip em { font-style: normal; opacity: .8; }
+.bar:hover .tip, .bar:focus-visible .tip { display: flex; }
+.xs { display: flex; gap: 4px; margin: 6px 0 0 28px; }
+.xs span { flex: 1 1 0; min-width: 0; text-align: center; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: visible; }
+.segs { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; border-radius: var(--radius-md); background: var(--fill); }
+.segbtn { min-height: 36px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent; color: var(--body); cursor: pointer; font-size: 13px; }
+.segbtn[aria-pressed="true"] { background: var(--ink); color: var(--group); font-weight: 600; }
+.trims > li { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.5fr) auto; gap: 6px 16px; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--line-soft); }
+.trims > li:last-child { border-bottom: 0; }
+.trims > li > .sub { grid-column: 1 / -1; }
+.trimbar { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--body); }
+.meterbar { height: 6px; border-radius: 3px; background: var(--fill); overflow: hidden; } .meterbar span { display: block; height: 100%; background: var(--link); border-radius: 3px; }
+.saved { font-weight: 600; color: var(--on); white-space: nowrap; }
+@media (max-width: 700px) { .trims > li { grid-template-columns: 1fr; } .chart { height: 200px; } }
 </style>
 </head>
 <body>
@@ -1112,7 +1148,8 @@ const ICON = {
   review: '<path d="M4 5h16v11H8l-4 4z"/><path d="M9 10h6"/>',
   lessons: '<path d="M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/>',
   plan: '<path d="M5 21V4h11l-2 4 2 4H5"/>',
-  activity: '<path d="M4 4v16h16M8 15l4-4 3 3 5-6"/>',
+  impact: '<path d="M4 4v16h16M8 15l4-4 3 3 5-6"/>',
+  activity: '<path d="M4 12h4l3-7 4 14 3-7h2"/>',
   settings: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9M15 5v4M9 15v4"/>',
 };
 const MARK = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12a7 7 0 1 1-2.05-4.95"/><path d="M19 4v4h-4"/></svg>';
@@ -1129,6 +1166,7 @@ function drawSide() {
       ${tabBtn("home", "Home")}
       ${tabBtn("lessons", "Lessons", n ? `<span class="count">${n}</span>` : "")}
       ${repo ? tabBtn("plan", "Plan") : ""}
+      ${tabBtn("impact", "Is it helping?")}
       ${tabBtn("activity", "Activity")}
     </nav>
     <div class="sidefoot nav">
@@ -1140,7 +1178,7 @@ function drawSide() {
 function drawPage() {
   drawSide();
   const t = currentTab();
-  const body = t === "home" ? homeView() : t === "lessons" ? lessonsView() : t === "plan" ? (repo && data.plan ? planSection() : lessonsView())
+  const body = t === "home" ? homeView() : t === "impact" ? impactView() : t === "lessons" ? lessonsView() : t === "plan" ? (repo && data.plan ? planSection() : lessonsView())
     : t === "activity" ? (runPage ? runPageView() : activityView()) : settingsView();
   $("#main").innerHTML = `<div class="grid">${body}</div>`;
 }
@@ -1233,7 +1271,7 @@ function homeView() {
     w.costUsd != null ? `secondnature's calls to your Claude cost about $${w.costUsd.toFixed(2)}.` : "",
   ].filter(Boolean);
   const week = `<section class="card pad" aria-labelledby="weekh"><h2 id="weekh">This week</h2>${weekLines.map((l) => `<p>${esc(l)}</p>`).join("")}
-      <button class="cardlink" data-tab="activity">See what agents did →</button></section>`;
+      <button class="cardlink" data-tab="impact">See if it's helping →</button></section>`;
 
   const tools = data.tools.length ? `<section class="card pad" aria-labelledby="toolsh" style="gap:4px"><h2 id="toolsh" style="margin-bottom:4px">Connected tools</h2>
       ${data.tools.map((c) => `<div class="toolrow"><span>${esc(c.name)}</span><span class="state${c.on ? " good" : ""}">${esc(c.state)}</span></div>`).join("")}
@@ -1339,6 +1377,57 @@ function lessonsView() {
 /** The "Ask about your work" box in a page's header. */
 const askBox = () => `<form class="asksearch" data-home-ask role="search">${svg('<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>', 16)}<label class="vh" for="homeq">Ask about your work</label>
   <input id="homeq" name="q" type="search" autocomplete="off" placeholder="Ask about your work, e.g. how did we fix the webhook?"><span class="kbd" aria-hidden="true">⌘K</span></form>`;
+/* Is it helping?: whether problems you kept a lesson for stopped, by day and lesson by lesson, and what output trims saved.
+   Read from the logs, so it loads when you open it rather than with the rest of the page. */
+let impact = null, impactFor = null, impactLoading = false, impactFilter = "all";
+async function loadImpact() {
+  if (impactLoading || impactFor === repo) return;
+  impactLoading = true;
+  try { impact = await api("/api/impact?" + q({ repo })); } catch (e) { impact = { error: e.message }; }
+  impactFor = repo;
+  impactLoading = false; draw();
+}
+const OUTCOME_WORD = { worked: ["Helping", "good"], came_back: ["Still happening", "warn"], too_early: ["Too early to tell", ""] };
+function impactView() {
+  const head = `<header class="homehead"><div><h1>Is it helping?</h1><p class="lead">Whether the problems you kept a lesson for stopped, and what shorter output saved.</p></div>
+      <button class="btn2 big" data-proof-page>Make a page to send someone</button></header>`;
+  if (impactFor !== repo) { loadImpact(); return head + `<div class="s12 card pad"><p><span class="spin" aria-hidden="true" style="display:inline-block;vertical-align:-2px"></span> Reading your sessions to see what came back…</p></div>`; }
+  if (impact.error) return head + `<div class="s12 card pad"><p>Couldn't read this: ${esc(impact.error)}</p></div>`;
+  const m = impact; const c = m.counts; const n = m.lessons.length;
+  const summary = `<section class="s12 card pad" aria-label="Summary"><p style="font-size:18px;font-weight:600;color:var(--ink)">${esc(n ? `${n} kept. ${c.worked} helping. ${c.came_back} still happening. ${c.too_early} too early to tell.` : "No kept lessons yet.")}</p>
+      <p class="sub" style="font-size:13px">A lesson counts as helping once ${m.minSessions} sessions have passed since you kept it, agents were told it, and its problem hasn't come back.</p></section>`;
+  // The chart: sessions a problem turned up in, each day, split by whether a kept lesson covers it; dashed lines where you kept lessons.
+  const top = Math.max(4, ...m.days.map((d) => d.covered + d.other));
+  const step = top <= 8 ? 2 : top <= 20 ? 5 : top <= 50 ? 10 : 25; const max = Math.ceil(top / step) * step;
+  const dayLabel2 = (d) => new Date(d + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  const grid = [...Array(max / step + 1)].map((_, i) => i * step).map((g) => `<span class="gl" style="bottom:${(g / max) * 100}%"><span>${g}</span></span>`).join("");
+  const bars = m.days.map((d, i) => `<div class="bar" tabindex="0" role="img" aria-label="${esc(`${dayLabel2(d.day)}: ${d.covered} covered by a kept lesson, ${d.other} others${d.kept ? `, you kept ${d.kept}` : ""}`)}">
+      ${d.kept ? `<span class="keptmark" aria-hidden="true"><span>Kept ${d.kept}</span></span>` : ""}
+      <span class="bseg other" style="height:${(d.other / max) * 100}%"></span><span class="bseg covered" style="height:${(d.covered / max) * 100}%"></span>
+      <span class="tip ${i > m.days.length - 4 ? "right" : ""}" aria-hidden="true"><strong>${esc(dayLabel2(d.day))}</strong><span><i class="sw covered"></i>Covered by a kept lesson <b>${d.covered}</b></span><span><i class="sw other"></i>Other repeated problems <b>${d.other}</b></span>${d.kept ? `<em>You kept ${d.kept} lesson${d.kept === 1 ? "" : "s"} this day.</em>` : ""}</span></div>`).join("");
+  const xs = m.days.map((d, i) => `<span>${i % 2 === 0 || m.days.length <= 8 ? esc(dayLabel2(d.day)) : ""}</span>`).join("");
+  const chart = `<section class="s12 card" aria-labelledby="trendh"><div class="cardhead"><div><h2 id="trendh">Repeated problems, last 14 days</h2><div class="sub">Sessions where a problem secondnature tracks turned up. Hover a day for the numbers.</div></div></div>
+      <div style="padding:14px 18px 18px">
+        <div class="legend"><span><i class="sw covered"></i>Problems a kept lesson covers</span><span><i class="sw other"></i>Other repeated problems</span><span><i class="sw mark"></i>When you kept lessons</span></div>
+        <div class="chart"><div class="cgrid" aria-hidden="true">${grid}</div><div class="bars">${bars}</div></div>
+        <div class="xs" aria-hidden="true">${xs}</div></div></section>`;
+  const rows = m.lessons.filter((l) => impactFilter === "all" || l.outcome === impactFilter);
+  const filters = [["all", "All"], ["worked", "Helping"], ["came_back", "Still happening"], ["too_early", "Too early"]].map(([k, lab]) => `<button class="segbtn" aria-pressed="${impactFilter === k}" data-impact-filter="${k}">${lab}</button>`).join("");
+  const table = `<section class="s12 card" aria-labelledby="eachh"><div class="cardhead"><div><h2 id="eachh">Each kept lesson</h2><div class="sub">How many sessions its problem turned up in before you kept it, and since.</div></div><div class="segs" role="group" aria-label="Show">${filters}</div></div>
+      ${rows.length ? `<div class="tablewrap"><table class="data"><thead><tr><th>Lesson</th><th>Kept</th><th class="num">Before</th><th class="num">Since</th><th>Status</th></tr></thead><tbody>
+        ${rows.map((l) => { const [w, cls] = OUTCOME_WORD[l.outcome]; return `<tr><td><button class="rowlink" data-tab="lessons" data-ltab="kept" data-sel="${esc(l.id)}">${esc(clip(l.text, 120))}</button>${l.stale ? `<div class="sub" style="color:var(--caution);margin-top:2px">${esc(l.stale.detail)}</div>` : ""}</td>
+          <td style="white-space:nowrap">${esc(shortDate(l.keptAt))}</td><td class="num">${l.before ? `${l.before} session${l.before === 1 ? "" : "s"}` : "—"}</td>
+          <td class="num">${l.after ? `${l.after} session${l.after === 1 ? "" : "s"}` : `0 in ${l.sessionsSince}`}</td>
+          <td><span class="status ${cls}" title="${esc(l.verdict)}">${w}</span></td></tr>`; }).join("")}</tbody></table></div>`
+      : `<p class="empty" style="margin:0">None here.</p>`}</section>`;
+  const fx = m.fixes;
+  const trims = `<section class="s12 card" aria-labelledby="trimh"><div class="cardhead"><div><h2 id="trimh">Shorter output · ${fx.length} applied</h2><div class="sub">Commands that showed agents far more than they read, now run through a short script. Costs are estimates at list price.</div></div></div>
+      ${fx.length ? `<ul class="plainlist trims">${fx.map((f) => { const pct = f.before.avgTokens ? Math.max(2, Math.round((f.after.avgTokens / f.before.avgTokens) * 100)) : 100; return `<li><code>${esc(f.cmd)}</code>
+          <div class="trimbar"><div class="meterbar"><span style="width:${pct}%"></span></div><span>${f.enough ? `About ${tok(f.before.avgTokens)} tokens a run before, ${tok(f.after.avgTokens)} since` : `${f.after.runs} run${f.after.runs === 1 ? "" : "s"} since applying, too few to say`}</span></div>
+          <span class="saved">${f.enough && f.savedTokens ? `${tok(f.savedTokens)} saved${f.savedUsd != null ? ` · about $${f.savedUsd.toFixed(2)}` : ""}` : ""}</span><span class="sub">${esc(f.verdict)}</span></li>`; }).join("")}</ul>`
+      : `<p class="empty" style="margin:0">None applied yet. When a command keeps showing agents thousands of lines they don't read, secondnature proposes a shorter version in Lessons, under Proposed changes.</p>`}</section>`;
+  return head + summary + chart + table + trims;
+}
 /* Activity: the week, runs and what they showed. */
 function activityView() {
   const totals = data.runs.reduce((a, r) => { const n = data.runInfo[r.id]?.numbers; if (n) { a.tokens += n.tokens; a.approvals += n.approvals; a.rework += n.rework + n.sentBack; } return a; }, { tokens: 0, approvals: 0, rework: 0 });
@@ -1595,6 +1684,13 @@ document.addEventListener("click", async (e) => {
   const li = el.closest("li[data-id]");
   try {
     if (el.dataset.open) { open = open === el.dataset.open ? null : el.dataset.open; draw(); return; }
+    if (el.dataset.impactFilter) { impactFilter = el.dataset.impactFilter; draw(); return; }
+    if (el.dataset.proofPage !== undefined) {
+      el.disabled = true; el.textContent = "Writing the page…";
+      try { const r = await api("/api/proof-page", { repo }); toast(`Wrote ${r.file.split("/").slice(-2).join("/")}. It has no scripts or outside files, so you can send it as is.`); }
+      finally { draw(); }
+      return;
+    }
     if (el.dataset.homeMore !== undefined) { homeMore = !homeMore; draw(); return; }
     if (el.dataset.fb) {
       const key = el.dataset.fbKey; const [kind, id, session] = key.split(":");
@@ -1782,7 +1878,7 @@ document.addEventListener("change", (e) => {
     return;
   }
   if (e.target.id === "histRoutine") { hist.routine = e.target.checked; $("#histList").innerHTML = histList(); return; }
-  if (e.target.id === "repo") { repo = e.target.value; runPage = null; if (!repo && tab === "plan") tab = null; week = null; if (!asking) { askThread = []; askThreadId = null; } open = null; sel = null; planBranch = null; refresh(); }
+  if (e.target.id === "repo") { repo = e.target.value; impactFor = null; runPage = null; if (!repo && tab === "plan") tab = null; week = null; if (!asking) { askThread = []; askThreadId = null; } open = null; sel = null; planBranch = null; refresh(); }
   if (e.target.id === "planBranch") { planBranch = e.target.value; planEdit = null; Object.assign(hist, { area: "All", q: "", open: {}, limit: 8 }); refresh(); }
 });
 refresh().catch((e) => { $("#main").innerHTML = `<p class="lead">${esc(e.message)}</p>`; });
