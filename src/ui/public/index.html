@@ -1029,36 +1029,48 @@ function runPageView() {
     : f ? `<li class="empty">Your Claude found nothing that stood out. <button class="linkbtn" data-run-find="${esc(r.id)}">Look again</button></li>`
     : runFinding === r.id ? `<li class="empty"><span class="spin" aria-hidden="true" style="display:inline-block;vertical-align:-2px"></span> Your Claude is looking at this run…</li>`
     : `<li class="empty"><button class="btn primary" data-run-find="${esc(r.id)}">Find what this run shows</button><div class="note" style="margin:8px 0 0">Where effort went, where it stalled, what was sent back and why, and roles that took a lot for little. One call to your Claude.</div></li>`;
-  return `<div class="pagehead"><div>
-      <div class="crumb"><button class="linkbtn" data-tab="activity">Activity</button> › Run</div>
-      <h1>${esc(runName(r))}</h1>
-      <p class="lead">${esc(shortDate(r.started_at))}, ${esc(clock(r.started_at))}–${esc(clock(r.ended_at))}. A run is a session and the agents it started, or agents in their own worktrees.</p>
-    </div><button class="btn" data-ask-open>Ask about this run</button></div>
-    ${n ? `<div class="stats s12">
-      <div class="stat"><b>${dur(n.minutes)}</b><span>from start to end</span></div>
-      <div class="stat"><b>${tok(n.tokens)}</b><span>tokens · ${esc(runCost(r))}</span></div>
-      <div class="stat"><b>${n.approvals}</b><span>approvals</span></div>
-      <div class="stat"><b${n.sentBack ? ' class="warn"' : ""}>${n.sentBack}</b><span>sent back by a reviewer</span></div>
-      <div class="stat"><b${n.rework ? ' class="warn"' : ""}>${n.rework}</b><span>fixes after approval</span></div>
-    </div>` : ""}
+  // The branch most of the run's sessions worked on, for the title.
+  const branches = r.sessions.map((x) => x.branch).filter(Boolean); const branch = branches.sort((a, b) => branches.filter((x) => x === b).length - branches.filter((x) => x === a).length)[0];
+  const agents = r.roles.filter((x) => x !== "main"); const worktrees = r.sessions.filter((x) => x.worktree).length;
+  const facts = [`${shortDate(r.started_at)}, ${clock(r.started_at)} to ${clock(r.ended_at)}`, `${agents.length} role${agents.length === 1 ? "" : "s"}${worktrees >= 2 ? ", each in its own worktree" : ""}`, ...(n ? [`${tok(n.tokens)} tokens`, runCost(r)] : [])];
+  const story = n ? [n.sentBack ? `a reviewer sent work back ${n.sentBack === 1 ? "once" : `${n.sentBack} times`}` : "", n.rework ? `${n.rework === 1 ? "one fix" : `${n.rework} fixes`} came after approval` : "", n.approvals && !n.sentBack && !n.rework ? `${n.approvals} approval${n.approvals === 1 ? "" : "s"}, nothing sent back` : ""].filter(Boolean) : [];
+  // What secondnature told the agents in this run (kept for the last 7 days), and whether lessons for these roles helped.
+  const ids = new Set(r.sessions.map((x) => x.id)); const roleOf = Object.fromEntries(r.sessions.map((x) => [x.id, x.role]));
+  const toldAll = (data.told?.sessions || []).filter((x) => ids.has(x.session)).flatMap((x) => x.told.map((t) => ({ ...t, role: roleOf[x.session] })));
+  // One line per thing told to a role, with how many of its sessions got it.
+  const told = [...toldAll.reduce((m, t) => { const k = `${t.role}|${t.kind}|${t.id}`; const e = m.get(k); if (e) e.n++; else m.set(k, { ...t, n: 1 }); return m; }, new Map()).values()];
+  const effects = data.effects.filter((x) => r.roles.includes(x.role));
+  const recent = Date.now() - Date.parse(r.started_at) < 7 * 86_400_000;
+  const sn = `<section class="card pad" aria-labelledby="snh"><div><h2 id="snh">secondnature in this run</h2><span class="sub">What your agents were told, and whether lessons for these roles helped</span></div>
+      <h3 class="label" style="margin-top:4px">Told · ${told.length}</h3>
+      ${told.length ? `<ul class="plainlist" style="display:flex;flex-direction:column;gap:10px">${told.slice(0, 10).map((t) => `<li style="display:flex;flex-direction:column;gap:2px"><span><span class="rolechip2">${esc(roleName(t.role || "main"))}</span> ${esc(clip(t.text, 140))}</span><span class="sub">Because ${esc(because(t.why))}${t.n > 1 ? ` Told in ${t.n} of its sessions.` : ""}</span></li>`).join("")}</ul>`
+        : `<p class="sub" style="font-size:13px">${recent ? "Nothing was told to the agents in this run." : "secondnature shows what it told agents for the last 7 days; this run is older."}</p>`}
+      ${effects.length ? `<h3 class="label" style="margin-top:6px">Did the role lessons help?</h3>${effects.map((fx) => { const [w, cls] = VERDICT[fx.verdict] || ["", ""]; return `<div style="display:flex;flex-direction:column;gap:4px"><span>${w ? `<span class="status ${cls}">${esc(w.replace("{role}", fx.role))}</span> ` : ""}<button class="rowlink" data-tab="lessons" data-ltab="kept" data-sel="${esc(fx.id)}" style="all:unset;cursor:pointer;font-weight:500">${esc(clip(fx.text, 100))}</button></span><span class="sub" style="font-size:13px">${esc(fx.summary)}</span></div>`; }).join("")}` : ""}
+    </section>`;
+  return `<header class="homehead"><div>
+      <div class="crumb"><button class="linkbtn" data-tab="activity">Runs</button> / ${esc(agents.length <= 3 ? agents.map(roleName).join(", ") : `${agents.length} roles`)}</div>
+      <h1>${branch ? `Run on ${esc(branch)}` : esc(runName(r))}</h1>
+      <p class="lead">${esc(facts.join(" · "))}</p>
+      <p class="lead" style="color:var(--body)">A run is a session and the agents it started, or agents working in their own worktrees on one task.${story.length ? ` This one: ${esc(story.join(", and "))}.` : ""}</p>
+    </div><button class="btn2 big" data-ask-open>Ask about this run</button></header>
     ${(() => {
       const views = runViews(r); const v = views.includes(runViewPick[r.id]) ? runViewPick[r.id] : views[0];
       const stepsHtml = events.length ? `<ol class="timeline" style="padding:4px 16px">${shown.map((e) => `<li><time datetime="${esc(e.at)}">${esc(clock(e.at))}</time><div>${e.html}</div></li>`).join("")}</ol>
         ${events.length > RUN_STEPS ? `<div style="padding:10px 16px;border-top:1px solid var(--line)"><button class="btn" style="height:28px;font-size:13px" data-run-all="${esc(r.id)}">${all ? "Show fewer" : `Show all ${events.length} steps`}</button></div>` : ""}` : `<div class="empty">No handoffs recorded.</div>`;
       const body = v === "shape" ? shapeView(r, n) : v === "time" ? timeView(r) : v === "waves" ? wavesView(r) : v === "phases" ? phasesView(r) : stepsHtml;
-      return `<section class="s12"><div class="panel">
-        <div class="panelhead"><div class="seg" role="group" aria-label="How to show this run">${views.map((x) => `<button data-run-view="${x}" aria-pressed="${x === v}">${VIEW_LABEL[x]}${x === "steps" ? ` · ${events.length}` : ""}</button>`).join("")}</div>
-          <span class="note" style="margin:0">${esc(v === views[0] && VIEW_HINT[v].startsWith("Opens") ? VIEW_HINT[v] : VIEW_HINT[v].replace(/^Opens on \w+ because /, ""))}</span></div>
-        ${body}</div></section>`;
+      return `<section class="s12 card" aria-labelledby="roleh">
+        <div class="cardhead"><div><h2 id="roleh">What each role did</h2><div class="sub">${esc(v === views[0] && VIEW_HINT[v].startsWith("Opens") ? VIEW_HINT[v] : VIEW_HINT[v].replace(/^Opens on \w+ because /, ""))}</div></div>
+          <div class="segs" role="group" aria-label="How to show this run">${views.map((x) => `<button class="segbtn" data-run-view="${x}" aria-pressed="${x === v}">${VIEW_LABEL[x]}${x === "steps" ? ` · ${events.length}` : ""}</button>`).join("")}</div></div>
+        ${body}</section>`;
     })()}
-    <div class="stack s8">
-      <section><h2>What it shows · from your Claude</h2><ul class="group">${findings}</ul></section>
-    </div>
-    <div class="stack s4">
-      ${n ? `<section><h2>Tokens by role</h2><div class="panel panelbody" style="display:grid;gap:12px">${n.roles.map((x) => `<div class="meter"><span>${esc(roleName(x.role))}</span><span class="val">${tok(x.tokens)} · ${Math.round(x.share * 100)}%</span><div class="bar"><span style="width:${Math.max(2, Math.round((x.tokens / top) * 100))}%"></span></div>
+    <div class="homegrid">
+    <div class="homecol">
+      <section class="card" aria-labelledby="showsh"><div class="cardhead"><div><h2 id="showsh">What it shows</h2><div class="sub">From your Claude</div></div></div><ul class="group flat">${findings}</ul></section>
+      ${n ? `<section class="card pad" aria-labelledby="tokh"><h2 id="tokh">Tokens by role</h2><div style="display:grid;gap:12px">${n.roles.map((x) => `<div class="meter"><span>${esc(roleName(x.role))}</span><span class="val">${tok(x.tokens)} · ${Math.round(x.share * 100)}%</span><div class="bar"><span style="width:${Math.max(2, Math.round((x.tokens / top) * 100))}%"></span></div>
         <div class="what">${x.sessions} session${x.sessions === 1 ? "" : "s"}${x.commands ? ` · ${x.commands} commands${x.failed ? `, ${x.failed} failed` : ""}` : ""}${x.approvals ? ` · approved ${x.approvals}×` : ""}${x.typed ? ` · you typed ${x.typed}` : ""}${x.sentBack ? ` · <span class="back">sent back ${x.sentBack}×</span>` : ""}</div></div>`).join("")}
         <div class="note" style="margin:0">Most is reading: context taken in, not code written.${r.wasted_tokens ? ` About ${tok(r.wasted_tokens)} went on failed retries and re-reads.` : ""}</div></div></section>` : ""}
-    </div>`;
+    </div>
+    <div class="homecol">${sn}</div></div>`;
 }
 /** Where a lesson applies while you keep or edit it: this repo, all repos or another repo, and which role hears it. */
 function whereFields(l, global) {
