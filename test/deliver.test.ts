@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { deliver, fromCursor, hookOutput, matches } from "../src/deliver/hook.js";
 import { openDb } from "../src/store/db.js";
+import { saveSettings } from "../src/config.js";
+import { currentBranch } from "../src/handoff/handoff.js";
 import { createLesson, decide, ensureRepo } from "../src/store/lessons.js";
 import { repoIdentity } from "../src/repo/identity.js";
 import { tmp, useHome } from "./helpers.js";
@@ -37,6 +39,21 @@ describe("deliver", () => {
     expect(await run({ hook_event_name: "UserPromptSubmit", prompt: "fix the banner" })).toBeNull();
     expect(await run({ hook_event_name: "UserPromptSubmit", prompt: "run the estimate tests" })).toContain("API key");
     expect(await deliver(await openDb(), "claude-code", { session_id: "s2", cwd, hook_event_name: "PostToolUseFailure", tool_input: { command: "pytest estimate" }, error: "Exit code 1" })).toContain("API key");
+  });
+  it("doesn't warn on failed commands when that's switched off in Settings, but still matches what you type", async () => {
+    await lesson("Set the API key before estimate tests", { keyword: "estimate" });
+    saveSettings({ warnFails: false });
+    expect(await run({ hook_event_name: "PostToolUseFailure", tool_input: { command: "pytest estimate" }, error: "Exit code 1" })).toBeNull();
+    expect(await run({ hook_event_name: "UserPromptSubmit", prompt: "run the estimate tests" })).toContain("API key");
+  });
+  it("hands over where the last session left off, unless that's switched off in Settings", async () => {
+    execFileSync("git", ["-C", cwd, "commit", "-q", "--allow-empty", "-m", "start"], { env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" } });
+    const db = await openDb(); await ensureRepo(db, repo, cwd);
+    await db.execute({ sql: "INSERT INTO handoffs (id,repo_id,branch,session,tool,text,created_at) VALUES ('h1',?,?,'old','claude-code','Next: run the release.',?)", args: [repo, currentBranch(cwd), new Date().toISOString()] });
+    saveSettings({ handOver: false });
+    expect(await run({ hook_event_name: "SessionStart", source: "startup" })).toBeNull();
+    saveSettings({ handOver: true });
+    expect(await deliver(await openDb(), "claude-code", { session_id: "s9", cwd, hook_event_name: "SessionStart", source: "startup" })).toContain("run the release");
   });
   it("only sends live lessons for this repo, plus global ones", async () => {
     await lesson("proposed one", { alwaysOn: true, status: "proposed" });
