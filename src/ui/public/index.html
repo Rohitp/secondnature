@@ -5,49 +5,54 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>secondnature</title>
 <style>
-/* The secondnature design system (its tokens, layout rules and components live in a Claude Design artifact):
-   a sidebar, four tabs, and a 12-column grid of panels with rows. The older names below (--group, --on, --link…)
-   map onto its tokens so every part of the page shares them. No web fonts are loaded, so the page makes no
-   requests off this machine: Geist is used where it's installed, else the system font. */
+/* The secondnature look, from the "Workbench family" design canvas: a white sidebar, cards on a light grey page,
+   one blue for links and selection, orange only for what needs you. No web fonts are loaded, so the page makes no
+   requests off this machine: Inter, Space Grotesk and JetBrains Mono are used where installed, else the system font. */
 :root {
-  --bg: #f6f6f4; --sidebar: #eeeeeb; --group: #ffffff; --fill: #f1f1ee; --line: #e3e3df; --line-strong: #cbcbc6;
-  --ink: #17181b; --muted: #5c5e66; --faint: #71747c;
-  --link: #2b3ab8; --chip: #edeffe; --on: #1b6e3e; --on-bg: #e4f3ea; --off: #cbcbc6;
-  --warn: #b23e06; --warn-bg: #fdf0e8; --on-warn: #ffffff; --caution: #7a5200; --caution-bg: #fff4d6;
-  --diff-add: #067647; --diff-del: #b42318;
-  --sans: "Geist", -apple-system, "SF Pro Text", "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
-  --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --bg: #f6f7f9; --sidebar: #ffffff; --group: #ffffff; --fill: #eef1f5; --hover: #f1f4f9; --line: #e3e6eb; --line-soft: #eef1f5; --line-strong: #c9d0db;
+  --ink: #14171f; --body: #3a4250; --muted: #5b6472; --faint: #5f6876;
+  --link: #2f5bea; --link-hover: #1e3a8a; --chip: #eaf0ff; --chip-ink: #1e3a8a; --on: #1b6e3e; --on-bg: #e4f3ea; --on-line: #a9d8bc; --off: #c9d0db;
+  --warn: #8a3d06; --warn-bg: #fdebd3; --warn-line: #f6d3a8; --warn-dot: #d97706; --on-warn: #8a3d06; --caution: #7a5200; --caution-bg: #fff4d6;
+  --diff-add: #067647; --diff-del: #b42318; --primary-hover: #2a2f3a;
+  --sans: "Inter", -apple-system, "SF Pro Text", "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
+  --display: "Space Grotesk", "Inter", -apple-system, "SF Pro Display", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --sidebar-width: 232px; --radius-sm: 5px; --radius-md: 8px; --radius-lg: 12px;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #111214; --sidebar: #151618; --group: #1a1b1e; --fill: #0e0f11; --line: #2a2c30; --line-strong: #3b3e43;
-    --ink: #ededef; --muted: #a2a5ad; --faint: #83868e;
-    --link: #8d98ff; --chip: #20244a; --on: #58c88a; --on-bg: #13281c; --off: #3b3e43;
-    --warn: #ff9a66; --warn-bg: #33200f; --on-warn: #1a0d05; --caution: #e8b54a; --caution-bg: #2e2410;
-    --diff-add: #6cd49a; --diff-del: #ff8a80; color-scheme: dark; }
+  :root { --bg: #0f1115; --sidebar: #15181d; --group: #1a1d23; --fill: #22262e; --hover: #20242b; --line: #2a2e36; --line-soft: #23272e; --line-strong: #3b414b;
+    --ink: #eceef2; --body: #c5cad3; --muted: #a0a7b2; --faint: #8d94a0;
+    --link: #8fa8ff; --link-hover: #b4c5ff; --chip: #1f2a4d; --chip-ink: #b4c5ff; --on: #58c88a; --on-bg: #13281c; --on-line: #2a5a3d; --off: #3b414b;
+    --warn: #ffb27a; --warn-bg: #3a2410; --warn-line: #5c3a1c; --warn-dot: #f59e0b; --on-warn: #ffb27a; --caution: #e8b54a; --caution-bg: #2e2410;
+    --diff-add: #6cd49a; --diff-del: #ff8a80; --primary-hover: #d6d9df; color-scheme: dark; }
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; } /* a class that sets display mustn't bring back something hidden */
 body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/21px var(--sans); }
 button, input, textarea, select { font: inherit; color: inherit; }
 a { color: var(--link); }
+a:hover { color: var(--link-hover); }
 :focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
 .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 /* The shell: sidebar, then the page on a 12-column grid. */
 .shell { display: grid; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); min-height: 100vh; }
-.side { background: var(--sidebar); border-right: 1px solid var(--line); padding: 14px 12px; display: flex; flex-direction: column; gap: 14px; position: sticky; top: 0; height: 100vh; overflow: auto; }
-.wordmark { font-weight: 600; font-size: 15px; letter-spacing: -0.01em; padding: 4px 8px; }
-.repopick { display: flex; flex-direction: column; gap: 2px; padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--group); }
-.repopick small { font-size: 10px; line-height: 14px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
-.repopick select { border: 0; background: none; padding: 0; font-weight: 500; cursor: pointer; width: 100%; }
+.side { background: var(--sidebar); border-right: 1px solid var(--line); padding: 16px 12px; display: flex; flex-direction: column; gap: 4px; position: sticky; top: 0; height: 100vh; overflow: auto; }
+.brand { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 4px 8px; margin-bottom: 6px; }
+.mark { width: 28px; height: 28px; border-radius: 7px; background: var(--ink); color: var(--group); display: grid; place-items: center; flex: none; }
+.wordmark { font: 600 17px/1 var(--display); letter-spacing: -0.01em; }
+.repopick { display: flex; flex-direction: column; gap: 0; min-height: 44px; padding: 5px 10px; margin-bottom: 10px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--group); }
+.repopick small { font-size: 11px; line-height: 15px; color: var(--muted); }
+.repopick select { border: 0; background: none; padding: 0; font-weight: 600; cursor: pointer; width: 100%; }
 .nav { display: flex; flex-direction: column; gap: 2px; }
-.nav button { all: unset; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 10px; border-radius: var(--radius-md); color: var(--muted); font-weight: 500; cursor: pointer; }
-.nav button:hover { background: var(--fill); color: var(--ink); }
-.nav button[aria-current="page"] { background: var(--group); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+.nav button { all: unset; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 44px; padding: 0 10px; border-radius: var(--radius-md); color: var(--body); cursor: pointer; }
+.nav button > span:first-child { display: flex; align-items: center; gap: 10px; }
+.nav button svg { flex: none; }
+.nav button:hover { background: var(--hover); }
+.nav button[aria-current="page"] { background: var(--chip); color: var(--chip-ink); font-weight: 600; }
 .nav button:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
-.count { font: 600 11px/16px var(--mono); padding: 1px 7px; border-radius: 999px; background: var(--warn); color: var(--on-warn); }
-.sidefoot { margin-top: auto; display: flex; flex-direction: column; gap: 8px; padding: 0 8px; font-size: 12px; line-height: 17px; color: var(--muted); }
-.sidefoot .linkbtn { font-size: 12px; }
+.count { font: 600 12px/18px var(--sans); padding: 0 8px; border-radius: 10px; background: var(--warn-bg); color: var(--warn); }
+.sidefoot { margin-top: auto; display: flex; flex-direction: column; gap: 2px; padding-top: 24px; }
+.sidenote { display: flex; flex-direction: column; gap: 4px; padding: 10px; margin-top: 6px; border-top: 1px solid var(--line); font-size: 12px; line-height: 17px; color: var(--muted); }
 main { min-width: 0; padding: 28px clamp(16px, 3vw, 40px) 72px; }
 .grid { max-width: 1440px; margin: 0 auto; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 24px; align-items: start; }
 .s12 { grid-column: span 12; } .s8 { grid-column: span 8; } .s7 { grid-column: span 7; } .s6 { grid-column: span 6; } .s5 { grid-column: span 5; } .s4 { grid-column: span 4; }
@@ -56,7 +61,7 @@ main { min-width: 0; padding: 28px clamp(16px, 3vw, 40px) 72px; }
 @media (max-width: 860px) { .shell { grid-template-columns: 1fr; } .side { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); } .nav { flex-direction: row; flex-wrap: wrap; } .sidefoot { margin-top: 0; } }
 .pagehead { grid-column: 1 / -1; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .crumb { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
-h1 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.02em; line-height: 32px; text-wrap: balance; }
+h1 { margin: 0; font: 600 26px/32px var(--display); letter-spacing: -0.01em; text-wrap: balance; }
 .lead { margin: 4px 0 0; color: var(--muted); max-width: 72ch; }
 section { min-width: 0; }
 h2 { margin: 0 0 8px 2px; font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
@@ -74,7 +79,7 @@ h2 { margin: 0 0 8px 2px; font-size: 11px; line-height: 16px; font-weight: 600; 
 .status { display: inline-flex; align-items: center; gap: 6px; padding: 1px 8px; border-radius: 999px; font-size: 12px; line-height: 18px; font-weight: 600; white-space: nowrap; background: var(--fill); color: var(--muted); }
 .status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .status.good { background: var(--on-bg); color: var(--on); } .status.warn { background: var(--warn-bg); color: var(--warn); } .status.caution { background: var(--caution-bg); color: var(--caution); }
-.tag { display: inline-block; padding: 0 7px; border-radius: var(--radius-sm); background: var(--chip); color: var(--link); font: 500 12px/18px var(--mono); }
+.tag { display: inline-block; padding: 0 7px; border-radius: var(--radius-sm); background: var(--chip); color: var(--chip-ink); font: 500 12px/18px var(--mono); }
 .kind { display: inline-block; padding: 0 7px; border-radius: var(--radius-sm); background: var(--fill); font-size: 12px; line-height: 18px; font-weight: 600; }
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); background: var(--group); border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; }
 .stat { padding: 12px 16px; border-left: 1px solid var(--line); } .stat:first-child { border-left: 0; }
@@ -148,7 +153,8 @@ input[type=text] { width: 100%; height: 40px; border: 1px solid var(--line-stron
 .btns { display: flex; gap: 10px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
 .btn { height: 34px; padding: 0 14px; border-radius: var(--radius-md); border: 1px solid var(--line-strong); background: var(--group); cursor: pointer; font-size: 14px; font-weight: 500; white-space: nowrap; }
 .btn:hover { background: var(--fill); }
-.btn.primary { background: var(--ink); border-color: var(--ink); color: var(--group); }
+.btn.primary { background: var(--ink); border-color: var(--ink); color: var(--group); font-weight: 600; }
+.btn.primary:hover { background: var(--primary-hover); }
 .btn.ask { border-color: transparent; background: var(--chip); color: var(--link); }
 .btn.textbtn { border: 0; background: none; padding: 0; height: auto; color: var(--warn); margin-left: auto; }
 .fix { height: 30px; padding: 0 12px; border-radius: 999px; border: 0; background: var(--warn-bg); color: var(--warn); font-size: 13px; font-weight: 600; cursor: pointer; margin-top: 6px; }
@@ -276,6 +282,66 @@ pre code { background: none; padding: 0; }
 .hdec { border-top: 1px solid var(--line); display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: 12px; padding: 12px 0; align-items: start; }
 .hdec .why { font-size: 14px; line-height: 1.45; color: var(--muted); margin-top: 3px; }
 .hdate { font-size: 12px; color: var(--muted); white-space: nowrap; padding-top: 3px; }
+/* Home: what needs you, what agents were told today, where you left off, the week, and which tools are connected. */
+.card { background: var(--group); border: 1px solid var(--line); border-radius: var(--radius-lg); min-width: 0; }
+.card.pad { padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
+.card h2, .cardhead h2 { margin: 0; font-size: 16px; line-height: 22px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--ink); }
+.card p { margin: 0; color: var(--body); }
+.cardhead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line-soft); }
+.cardhead .sub, .card .sub { font-size: 12px; line-height: 17px; color: var(--muted); }
+.homehead { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.homehead .lead { margin-top: 2px; }
+.asksearch { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--group); flex: 1 1 320px; max-width: 460px; }
+.asksearch input { border: 0; outline: none; flex: 1; min-width: 0; background: transparent; }
+.asksearch:focus-within { outline: 2px solid var(--link); outline-offset: 2px; }
+.kbd { font: 11px/16px var(--mono); color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; }
+.needs { grid-column: 1 / -1; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; }
+.needs .top { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; justify-content: space-between; }
+.needs .what { display: flex; gap: 14px; align-items: flex-start; flex: 1 1 360px; }
+.needs .num { flex: none; width: 36px; height: 36px; border-radius: 9px; background: var(--chip); color: var(--chip-ink); display: grid; place-items: center; font: 700 16px/1 var(--display); }
+.needs .num.ok { background: var(--on-bg); color: var(--on); }
+.needs strong { font-size: 16px; display: block; }
+.needs .what span { color: var(--muted); }
+.btnlink { display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border: 0; border-radius: var(--radius-md); background: var(--ink); color: var(--group); font-weight: 600; cursor: pointer; text-decoration: none; }
+.btnlink:hover { background: var(--primary-hover); }
+.btn2 { display: inline-flex; align-items: center; min-height: 40px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--group); font-weight: 600; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.btn2:hover { background: var(--hover); }
+.moretoggle { align-self: flex-start; display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; cursor: pointer; color: var(--warn); font-weight: 600; font-size: 13px; }
+.moretoggle:hover { background: var(--hover); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn-dot); flex: none; }
+.morelist { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line-soft); }
+.morelist li { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--line-soft); }
+.morelist li > div { display: flex; flex-direction: column; gap: 2px; flex: 1 1 360px; min-width: 0; }
+.morelist li span { font-size: 13px; color: var(--muted); }
+.homegrid { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); gap: 16px; align-items: start; }
+.homecol { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.speak { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--body); }
+.speak select, .sel { min-height: 36px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--group); }
+.speakline { margin: 0; padding: 10px 18px; background: var(--hover); border-bottom: 1px solid var(--line-soft); font-size: 13px; color: var(--body); }
+.toldlist { list-style: none; margin: 0; padding: 0; }
+.toldlist li { display: flex; gap: 14px; padding: 14px 18px; border-bottom: 1px solid var(--line-soft); }
+.toldlist li:last-child { border-bottom: 0; }
+.toldlist li:hover { background: var(--hover); }
+.toldlist time { flex: none; width: 44px; font: 12px/18px var(--mono); color: var(--muted); padding-top: 2px; }
+.toldlist .body { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.toldlist .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.toolchip { font-size: 12px; font-weight: 600; color: var(--body); background: var(--fill); border-radius: 4px; padding: 0 6px; }
+.rolechip2 { font: 11px/17px var(--mono); color: var(--chip-ink); background: var(--chip); border-radius: 4px; padding: 0 6px; }
+.toldlist .text { font-weight: 500; overflow-wrap: anywhere; }
+.toldlist .why { font-size: 13px; color: var(--muted); }
+.fb { display: flex; gap: 4px; align-self: center; flex: none; }
+.pill { min-height: 32px; padding: 0 10px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; background: var(--group); color: var(--body); border: 1px solid var(--line); }
+.pill:hover { background: var(--hover); }
+.pill.good[aria-pressed="true"] { background: var(--on-bg); color: var(--on); border-color: var(--on-line); }
+.pill.bad[aria-pressed="true"] { background: var(--warn-bg); color: var(--warn); border-color: var(--warn-line); }
+.branchchip { font: 12px/18px var(--mono); color: var(--chip-ink); background: var(--chip); border-radius: 4px; padding: 0 6px; overflow-wrap: anywhere; }
+.cardlink { font-size: 13px; font-weight: 600; text-decoration: none; min-height: 32px; display: inline-flex; align-items: center; border: 0; background: none; padding: 0; color: var(--link); cursor: pointer; align-self: flex-start; }
+.cardlink:hover { color: var(--link-hover); }
+.toolrow { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 36px; border-bottom: 1px solid var(--line-soft); }
+.toolrow:last-child { border-bottom: 0; }
+.state { font-size: 12px; font-weight: 600; border-radius: 10px; padding: 1px 8px; background: var(--fill); color: var(--body); text-align: right; }
+.state.good { background: var(--on-bg); color: var(--on); }
+@media (max-width: 600px) { .toldlist li { flex-wrap: wrap; } .toldlist .body { flex-basis: calc(100% - 58px); } .fb { margin-left: 58px; } }
 </style>
 </head>
 <body>
@@ -627,6 +693,8 @@ async function load() {
   ]);
   const [plan, memory, lessonFile, proposals, threads, askSuggestions, rules] = await Promise.all([repo ? api("/api/plan?" + q({ repo, branch: planBranch })) : null, api("/api/memory?" + q({ repo })), repo ? api("/api/lesson-file?" + q({ repo })) : null, api("/api/proposals?" + q({ repo })), api("/api/threads?" + q({ repo })), api("/api/ask-suggestions?" + q({ repo })).catch(() => []), repo ? api("/api/rules?" + q({ repo })).catch(() => null) : null]);
   const schedule = await api("/api/schedule").catch(() => null);
+  // Home: where the last session left off, and which coding tools are set up to be told.
+  const [handoffs, tools] = await Promise.all([api("/api/handoffs?" + q({ repo })).catch(() => []), api("/api/tools?" + q({ repo })).catch(() => [])]);
   // Autonomous runs come from the data side's /api/runs; until it's there, the section stays hidden.
   const runs = repo ? await api("/api/runs?" + q({ repo })).catch(() => []) : [];
   const runInfo = Array.isArray(runs) && runs.length ? await api("/api/run-findings", { runs }).catch(() => ({})) : {};
@@ -636,7 +704,7 @@ async function load() {
   const asked = await api("/api/queries?" + q({ repo, days: 7 })).catch(() => ({ queries: [], lessonFinds: {} }));
   // What secondnature's hooks told agents this week, session by session, and what it held back.
   const told = await api("/api/told?" + q({ repo, days: 7 })).catch(() => null);
-  data = { repos, suggested, kept, home, scan, plan, memory, lessonFile, proposals, threads, askSuggestions, rules, schedule, runs: Array.isArray(runs) ? runs : [], runInfo, effects: Array.isArray(effects) ? effects : [], queries: (asked.queries || []).filter((x) => x.tool !== "terminal"), lessonFinds: asked.lessonFinds || {}, lessonText: asked.lessonText || {}, told };
+  data = { repos, suggested, kept, home, scan, plan, memory, lessonFile, proposals, threads, askSuggestions, rules, schedule, runs: Array.isArray(runs) ? runs : [], runInfo, effects: Array.isArray(effects) ? effects : [], queries: (asked.queries || []).filter((x) => x.tool !== "terminal"), lessonFinds: asked.lessonFinds || {}, lessonText: asked.lessonText || {}, told, handoffs: Array.isArray(handoffs) ? handoffs : [], tools: Array.isArray(tools) ? tools : [] };
 }
 
 /* Autonomous runs: sessions working together in a repo, each in a role (subagents, or agents in their own worktrees),
@@ -1020,32 +1088,148 @@ function draw() {
 }
 /* How many things wait for a yes or no in this repo: suggestions, proposed file changes, out-of-date CLAUDE.md lines. */
 const waitingCount = () => data.suggested.length + (data.proposals?.waiting?.length || 0) + (data.memory || []).filter((m) => m.status === "open").length;
-/* The tab open now: the one picked, or To review when something's waiting, else Lessons. */
-const currentTab = () => tab || (waitingCount() ? "review" : "lessons");
+/* The tab open now: the one picked, else Home. */
+const currentTab = () => tab || "home";
+/* Line icons for the sidebar, drawn with the text colour. */
+const svg = (d, size = 18) => `<svg aria-hidden="true" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const ICON = {
+  home: '<path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z"/>',
+  review: '<path d="M4 5h16v11H8l-4 4z"/><path d="M9 10h6"/>',
+  lessons: '<path d="M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/>',
+  plan: '<path d="M5 21V4h11l-2 4 2 4H5"/>',
+  activity: '<path d="M4 4v16h16M8 15l4-4 3 3 5-6"/>',
+  settings: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9M15 5v4M9 15v4"/>',
+};
+const MARK = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12a7 7 0 1 1-2.05-4.95"/><path d="M19 4v4h-4"/></svg>';
 function drawSide() {
   const { repos } = data;
   const t = currentTab(); const n = waitingCount();
   const othersWaiting = repo ? repos.some((r) => r.id !== repo && r.waiting) : false;
-  const tabBtn = (id, label, extra = "") => `<button data-tab="${id}" ${t === id ? 'aria-current="page"' : ""}>${label}${extra}</button>`;
+  const tabBtn = (id, label, extra = "") => `<button data-tab="${id}" ${t === id ? 'aria-current="page"' : ""}><span>${svg(ICON[id])}${label}</span>${extra}</button>`;
   $("#side").innerHTML = `
-    <div class="wordmark">secondnature</div>
+    <div class="brand"><span class="mark">${MARK}</span><span class="wordmark">secondnature</span></div>
     <div class="repopick"><label for="repo"><small>Repo${othersWaiting ? ' · <span style="color:var(--warn)">others waiting</span>' : ""}</small></label>
       <select id="repo"><option value="" ${repo ? "" : "selected"}>All repos</option>${[...new Set([HERE, repo].filter((r) => r && !repos.some((x) => x.id === r)))].map((r) => `<option value="${esc(r)}" ${r === repo ? "selected" : ""}>${esc(short(r))}${r === HERE ? " (this folder)" : ""}</option>`).join("")}${repos.map((r) => `<option value="${esc(r.id)}" ${r.id === repo ? "selected" : ""}>${esc(short(r.id))}${r.waiting && r.id !== repo ? ` (${r.waiting} waiting)` : ""}</option>`).join("")}</select></div>
     <nav class="nav" aria-label="Sections">
+      ${tabBtn("home", "Home")}
       ${tabBtn("review", "To review", n ? `<span class="count">${n}</span>` : "")}
       ${tabBtn("lessons", "Lessons")}
       ${repo ? tabBtn("plan", "Plan") : ""}
       ${tabBtn("activity", "Activity")}
     </nav>
-    <button class="btn ask" data-ask-open ${askOpen ? "hidden" : ""}>Ask about ${repo ? esc(short(repo)) : "your repos"}</button>
-    <div class="sidefoot"><span>${scanLine()}</span>${tabBtn("settings", "Settings").replace("<button", '<button class="linkbtn" style="text-align:left"')}</div>`;
+    <div class="sidefoot nav">
+      <button class="btn ask" data-ask-open ${askOpen ? "hidden" : ""} style="all:unset;box-sizing:border-box;display:flex;align-items:center;gap:10px;min-height:44px;padding:0 10px;border-radius:8px;color:var(--link);font-weight:600;cursor:pointer">${svg('<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>')}Ask about ${repo ? esc(short(repo)) : "your repos"}</button>
+      ${tabBtn("settings", "Settings")}
+      <div class="sidenote"><span>${scanLine()}</span></div>
+    </div>`;
 }
 function drawPage() {
   drawSide();
   const t = currentTab();
-  const body = t === "review" ? reviewView() : t === "lessons" ? lessonsView() : t === "plan" ? (repo && data.plan ? planSection() : lessonsView())
+  const body = t === "home" ? homeView() : t === "review" ? reviewView() : t === "lessons" ? lessonsView() : t === "plan" ? (repo && data.plan ? planSection() : lessonsView())
     : t === "activity" ? (runPage ? runPageView() : activityView()) : settingsView();
   $("#main").innerHTML = `<div class="grid">${body}</div>`;
+}
+/* Home: what needs you, what agents were told today and why, where you left off, the week, and connected tools. */
+let homeMore = false;
+const fbGiven = {}; // Helped or Wrong you marked on this visit, by line, so the buttons show what you picked.
+const SPEAK = {
+  quiet: "secondnature tells your agents nothing on its own. They can still search what you kept.",
+  start: "secondnature tells your agents what they need when a session starts, and when a word you chose comes up.",
+  anytime: "secondnature also speaks up mid-task, for example when a command fails the way it has before.",
+};
+/** Why a line was told, as the end of a sentence starting "Because". */
+function because(why) {
+  const w = String(why || "");
+  if (w === "always-on, at session start") return "a session started. You chose to tell it every session.";
+  if (w === "always-on, sent again after compaction") return "the conversation was compacted, so every-session lessons were told again.";
+  if (w === "always-on, for a subagent") return "a subagent started. You chose to tell it every session.";
+  if (w === "always-on, read from CLAUDE.local.md") return "a session started and read it from CLAUDE.local.md.";
+  if (w === "matched your prompt") return "your prompt matched it.";
+  if (w === "after a failed command") return "a command failed the way it has before.";
+  return w.replace(/\.?$/, ".");
+}
+/** The newest handoff's lines, by their label: Goal, Done, Decided, Next, Open. */
+function handoffParts(text) {
+  const out = {}; let key = null;
+  for (const line of String(text || "").split("\n")) {
+    const m = line.match(/^(Goal|Done|Decided|Next|Open|Status):\s*(.*)$/);
+    if (m) { key = m[1]; out[key] = m[2]; } else if (key && line.trim()) out[key] += " " + line.trim();
+  }
+  return out;
+}
+function homeView() {
+  const h = data.home; const n = waitingCount(); const s = data.suggested.length;
+  const props = data.proposals?.waiting?.length || 0; const lines = (data.memory || []).filter((m) => m.status === "open").length;
+  const others = repo ? data.repos.filter((r) => r.id !== repo && r.waiting) : [];
+  const more = [
+    ...(props ? [{ title: `${props} proposed edit${props === 1 ? "" : "s"} to CLAUDE.md or skills`, note: "Your Claude checked this repo's instruction files against your sessions.", cta: "Review", attr: 'data-tab="review"' }] : []),
+    ...(lines ? [{ title: `${lines} line${lines === 1 ? "" : "s"} in CLAUDE.md may be out of date`, note: "They name files or commands that aren't in the repo any more.", cta: "Review", attr: 'data-tab="review"' }] : []),
+    ...h.cameBack.slice(0, 3).map((c) => ({ title: "A problem came back", note: `“${c.text}”: it happened again after you kept the lesson.`, cta: "See the lesson", attr: 'data-tab="lessons"' })),
+    ...others.slice(0, 3).map((r) => ({ title: `${r.waiting} waiting in ${short(r.id)}`, note: "New lessons from your sessions in that repo.", cta: "Open", attr: `data-repo="${esc(r.id)}"` })),
+  ];
+  // The headline: new lessons first, as they're what most often waits; else whatever else needs you.
+  const head = s ? { num: s, title: `${s} new lesson${s === 1 ? "" : "s"} to review`, sub: "Found in your sessions. Agents aren't told until you keep one.", cta: `Review ${s} lesson${s === 1 ? "" : "s"}` }
+    : n ? { num: n, title: `${n} thing${n === 1 ? "" : "s"} need${n === 1 ? "s" : ""} you`, sub: "Nothing changes for your agents until you decide.", cta: "Review" }
+    : more.length ? { num: more.length, title: `${more.length} thing${more.length === 1 ? "" : "s"} to look at`, sub: "None of these change what agents are told until you act.", cta: null }
+    : null;
+  // When nothing waits for a yes or no, the other things are the headline, so they show without a toggle.
+  const listOpen = head && !head.cta;
+  const shown = head && !s && head.cta ? more.slice(props || lines ? 1 : 0) : more;
+  const needs = `<section class="card needs" aria-label="Needs you">
+      <div class="top"><div class="what"><span class="num${head ? "" : " ok"}" aria-hidden="true">${head ? head.num : "✓"}</span>
+        <div><strong>${head ? head.title : "Nothing needs you"}</strong><span>${head ? head.sub : "New lessons show here as secondnature reads your sessions."}</span></div></div>
+        ${head?.cta ? `<button class="btnlink" data-tab="review">${head.cta}</button>` : ""}</div>
+      ${listOpen ? `<ul class="morelist">${shown.map((m) => `<li><div><strong>${esc(m.title)}</strong><span>${esc(m.note)}</span></div><button class="btn2" ${m.attr}>${esc(m.cta)}</button></li>`).join("")}</ul>`
+      : shown.length ? `<button class="moretoggle" aria-expanded="${homeMore}" data-home-more><span class="dot" aria-hidden="true"></span>${homeMore ? "Hide" : `${shown.length} more thing${shown.length === 1 ? "" : "s"} need${shown.length === 1 ? "s" : ""} you`}</button>
+        ${homeMore ? `<ul class="morelist">${shown.map((m) => `<li><div><strong>${esc(m.title)}</strong><span>${esc(m.note)}</span></div><button class="btn2" ${m.attr}>${esc(m.cta)}</button></li>`).join("")}</ul>` : ""}` : ""}
+    </section>`;
+
+  const told = h.receipt;
+  const toldRows = told.map((t) => {
+    const key = `${t.kind}:${t.id}:${t.session || ""}`; const v = fbGiven[key] || "";
+    return `<li><time datetime="${esc(t.at)}">${esc(clock(t.at))}</time><div class="body">
+        <span class="chips"><span class="toolchip">${esc(TOOL_NAMES[t.tool] || t.tool)}</span>${t.kind === "handoff" ? '<span class="rolechip2">where you left off</span>' : ""}</span>
+        <span class="text">${esc(clip(t.text, 180))}</span><span class="why">Because ${esc(because(t.why))}</span></div>
+      <div class="fb" role="group" aria-label="Was this useful?"><button class="pill good" aria-pressed="${v === "helped"}" data-fb="helped" data-fb-key="${esc(key)}">Helped</button><button class="pill bad" aria-pressed="${v === "wrong"}" data-fb="wrong" data-fb-key="${esc(key)}">Wrong</button></div></li>`;
+  }).join("");
+  const toldCard = `<section class="card" aria-labelledby="toldh">
+      <div class="cardhead"><div><h2 id="toldh">Told your agents today · ${told.length}</h2><div class="sub">Each one says why it was told. Mark it if it helped or was wrong.</div></div>
+        ${repo ? `<label class="speak">Speaks up <select id="speak">${["quiet", "start", "anytime"].map((d) => `<option value="${d}" ${h.dial === d ? "selected" : ""}>${{ quiet: "only when asked", start: "at session start", anytime: "whenever relevant" }[d]}</option>`).join("")}</select></label>` : ""}</div>
+      <p class="speakline">${SPEAK[h.dial] || ""}</p>
+      ${told.length ? `<ul class="toldlist">${toldRows}</ul>` : `<p class="empty" style="margin:0">Nothing told in the last day${repo ? ` in ${esc(short(repo))}` : ""}. Lessons you keep are told when a session starts or a word you chose comes up.</p>`}
+    </section>`;
+
+  const ho = data.handoffs[0]; const hp = ho ? handoffParts(ho.text) : null;
+  const left = `<section class="card pad" aria-labelledby="lefth">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px"><h2 id="lefth">Where you left off</h2>${ho?.branch ? `<span class="branchchip">${esc(ho.branch)}</span>` : ""}</div>
+      ${ho ? `<span class="sub">From your last session${!repo && ho.repo_id ? ` in ${esc(short(ho.repo_id))}` : ""}, in ${esc(TOOL_NAMES[ho.tool] || ho.tool)}, ${esc(ago(ho.created_at))}</span>
+        ${hp.Goal ? `<p style="color:var(--ink)"><strong>Goal:</strong> ${esc(hp.Goal)}</p>` : ""}
+        ${hp.Done ? `<p>${esc(clip(hp.Done, 260))}</p>` : ""}
+        ${hp.Next ? `<p><strong style="color:var(--ink)">Next:</strong> ${esc(clip(hp.Next, 260))}</p>` : ""}
+        ${repo ? `<button class="cardlink" data-tab="plan">Open the plan →</button>` : ""}`
+      : `<p>No session has ended with a summary yet${repo ? ` in ${esc(short(repo))}` : ""}. When one does, the next session is told where it left off, and it shows here.</p>`}
+    </section>`;
+
+  const w = h.week; const weekLines = [
+    w.sessions ? `Lessons were told in ${w.sessions} session${w.sessions === 1 ? "" : "s"} this week.` : "No lessons were told this week yet.",
+    w.mostTold ? `Told most: “${w.mostTold.label}”, in ${w.mostTold.sessions} session${w.mostTold.sessions === 1 ? "" : "s"}.` : "",
+    w.problems.kept ? (w.problems.cameBack ? `${w.problems.cameBack} of the ${w.problems.kept} problems you kept a lesson for came back.` : `None of the ${w.problems.kept} problem${w.problems.kept === 1 ? "" : "s"} you kept a lesson for came back.`) : "",
+    w.handoffs ? `Where you left off was passed on ${w.handoffs} time${w.handoffs === 1 ? "" : "s"}.` : "",
+    w.costUsd != null ? `secondnature's calls to your Claude cost about $${w.costUsd.toFixed(2)}.` : "",
+  ].filter(Boolean);
+  const week = `<section class="card pad" aria-labelledby="weekh"><h2 id="weekh">This week</h2>${weekLines.map((l) => `<p>${esc(l)}</p>`).join("")}
+      <button class="cardlink" data-tab="activity">See what agents did →</button></section>`;
+
+  const tools = data.tools.length ? `<section class="card pad" aria-labelledby="toolsh" style="gap:4px"><h2 id="toolsh" style="margin-bottom:4px">Connected tools</h2>
+      ${data.tools.map((c) => `<div class="toolrow"><span>${esc(c.name)}</span><span class="state${c.on ? " good" : ""}">${esc(c.state)}</span></div>`).join("")}
+      ${repo ? "" : `<span class="sub" style="margin-top:6px">Pick a repo to see Cursor and Antigravity.</span>`}</section>` : "";
+
+  return `<header class="homehead"><div><h1>Home</h1><p class="lead">What needs you, and what secondnature told your agents today${repo ? ` in ${esc(short(repo))}` : ""}.</p></div>
+      <form class="asksearch" data-home-ask role="search">${svg('<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>', 16)}<label class="vh" for="homeq">Ask about your work</label>
+        <input id="homeq" name="q" type="search" autocomplete="off" placeholder="Ask about your work, e.g. how did we fix the webhook?"><span class="kbd" aria-hidden="true">⌘K</span></form></header>
+    ${needs}
+    <div class="homegrid">${toldCard}<div class="homecol">${left}${week}${tools}</div></div>`;
 }
 /* To review: everything waiting for a yes or no, one queue. */
 function reviewView() {
@@ -1333,12 +1517,17 @@ document.addEventListener("input", (e) => {
   hist.q = e.target.value; $("#histList").innerHTML = histList();
 });
 document.addEventListener("submit", async (e) => {
+  // Home's search box: the question goes to the Ask panel.
+  const home = e.target.closest("[data-home-ask]");
+  if (home) { e.preventDefault(); const qt = home.q.value.trim(); if (!qt || asking) return; home.q.value = ""; setAskOpen(true); draw(); await askNow(qt); return; }
   const form = e.target.closest("[data-ask-form]"); if (!form) return;
   e.preventDefault();
   const q = form.q.value.trim(); if (!q || asking) return;
   await askNow(q);
 });
 document.addEventListener("keydown", (e) => {
+  // ⌘K (Ctrl+K elsewhere): ask about your work, from Home's box or the Ask panel.
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); const box = $("#homeq"); if (box) box.focus(); else { setAskOpen(true); draw(); } return; }
   if (!e.target.matches?.("[data-plan-input]")) return;
   if (e.key === "Enter") { e.preventDefault(); savePlanInput().catch((err) => toast(err.message)); }
   if (e.key === "Escape") { planEdit = null; draw(); }
@@ -1350,6 +1539,15 @@ document.addEventListener("click", async (e) => {
   try {
     if (el.dataset.open) { open = open === el.dataset.open ? null : el.dataset.open; draw(); return; }
     if (el.dataset.more !== undefined) { showAll = !showAll; draw(); return; }
+    if (el.dataset.homeMore !== undefined) { homeMore = !homeMore; draw(); return; }
+    if (el.dataset.fb) {
+      const key = el.dataset.fbKey; const [kind, id, session] = key.split(":");
+      if (fbGiven[key] === el.dataset.fb) return;
+      await api("/api/feedback", { kind, id, session: session || null, verdict: el.dataset.fb });
+      fbGiven[key] = el.dataset.fb; draw();
+      toast(el.dataset.fb === "helped" ? "Thanks. It counts toward whether this lesson is helping." : "Noted as wrong. If it keeps being wrong, change when it's told in Lessons.");
+      return;
+    }
     if (el.dataset.query) { openQuery = openQuery === el.dataset.query ? null : el.dataset.query; draw(); return; }
     // The plan
     if (el.dataset.planEdit) { planEdit = el.dataset.planEdit; draw(); $("#pe")?.focus(); return; }
@@ -1521,6 +1719,10 @@ document.addEventListener("click", async (e) => {
   } catch (err) { toast(err.message); el.disabled = false; }
 });
 document.addEventListener("change", (e) => {
+  if (e.target.id === "speak") {
+    api("/api/dial", { repo, dial: e.target.value }).then(() => { toast(SPEAK[e.target.value]); return refresh(); }).catch((err) => toast(err.message));
+    return;
+  }
   if (e.target.id === "histRoutine") { hist.routine = e.target.checked; $("#histList").innerHTML = histList(); return; }
   if (e.target.id === "repo") { repo = e.target.value; runPage = null; if (!repo && tab === "plan") tab = null; week = null; if (!asking) { askThread = []; askThreadId = null; } open = null; showAll = false; planBranch = null; refresh(); }
   if (e.target.id === "planBranch") { planBranch = e.target.value; planEdit = null; Object.assign(hist, { area: "All", q: "", open: {}, limit: 8 }); refresh(); }
