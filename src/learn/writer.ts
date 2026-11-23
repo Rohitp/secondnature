@@ -118,7 +118,7 @@ const runAsync = ([cmd, args]: [string, string[]], prompt: string) => new Promis
 export type Runner = { name: string; job?: Job; calls?: Usage[]; run: (prompt: string) => string; runAsync?: (prompt: string) => Promise<string> };
 /** The engineer's own Claude Code or Codex, run with no tools and no hooks. MUNINN_WRITER overrides. */
 export function pickRunner(job: Job = "background"): Runner | null {
-  const name = process.env.MUNINN_WRITER;
+  const name = process.env.MUNINN_WRITER || settings().writer || undefined;
   if (name === "none") return null;
   const choice = name ?? (findClient("claude") ? "claude" : findClient("codex") ? "codex" : null);
   if (choice !== "claude" && choice !== "codex") return null;

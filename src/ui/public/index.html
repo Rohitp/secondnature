@@ -500,6 +500,9 @@ button, a, input, select, textarea { transition: background-color .14s ease, col
 .state.warn { background: var(--warn-bg); color: var(--warn); }
 .prwhy { margin: 0; padding: 14px 16px; border-radius: var(--radius-md); background: var(--fill); white-space: pre-wrap; font: 13px/1.6 var(--mono); color: var(--ink); }
 .sesstail { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: var(--radius-md); background: var(--fill); font-size: 13px; }
+.seg { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; border-radius: 10px; background: var(--fill); align-self: flex-start; }
+.seg button { min-height: 40px; padding: 0 14px; border: 0; border-radius: 8px; background: none; color: var(--body); cursor: pointer; font-weight: 600; }
+.seg button[aria-checked="true"] { background: var(--group); color: var(--ink); box-shadow: 0 1px 2px rgba(20,23,31,.14); }
 </style>
 <script>try { const t = localStorage.getItem("theme"); if (t) document.documentElement.dataset.theme = t; } catch { /* the OS decides */ }</script>
 </head>
@@ -540,6 +543,7 @@ function rememberPick() {
   if (runPage) u.searchParams.set("run", runPage); else u.searchParams.delete("run");
   if (typeof ltab !== "undefined" && ltab) u.searchParams.set("lt", ltab); else u.searchParams.delete("lt");
   if (typeof sel !== "undefined" && sel) u.searchParams.set("sel", sel); else u.searchParams.delete("sel");
+  if (typeof stab !== "undefined" && stab && tab === "settings") u.searchParams.set("st", stab); else u.searchParams.delete("st");
   history.replaceState(null, "", u);
 }
 let open = null; // the id of the row opened for editing
@@ -900,7 +904,7 @@ async function load() {
     api("/api/repos"), api("/api/lessons?" + q({ repo, status: "proposed" })), api("/api/lessons?" + q({ repo, status: "live" })), api("/api/home?" + q({ repo })), api("/api/scan"),
   ]);
   const [plan, memory, lessonFile, proposals, threads, askSuggestions, rules] = await Promise.all([repo ? api("/api/plan?" + q({ repo, branch: planBranch })) : null, api("/api/memory?" + q({ repo })), repo ? api("/api/lesson-file?" + q({ repo })) : null, api("/api/proposals?" + q({ repo })), api("/api/threads?" + q({ repo })), api("/api/ask-suggestions?" + q({ repo })).catch(() => []), repo ? api("/api/rules?" + q({ repo })).catch(() => null) : null]);
-  const [schedule, prefs] = await Promise.all([api("/api/schedule").catch(() => null), api("/api/settings").catch(() => ({}))]);
+  const [schedule, prefs] = await Promise.all([api("/api/schedule").catch(() => null), api("/api/settings?" + q({ repo })).catch(() => ({}))]);
   // Home: where the last session left off, and which coding tools are set up to be told.
   const [handoffs, tools] = await Promise.all([api("/api/handoffs?" + q({ repo })).catch(() => []), api("/api/tools?" + q({ repo })).catch(() => [])]);
   // Autonomous runs come from the data side's /api/runs; until it's there, the section stays hidden.
@@ -912,7 +916,7 @@ async function load() {
   const asked = await api("/api/queries?" + q({ repo, days: 7 })).catch(() => ({ queries: [], lessonFinds: {} }));
   // What secondnature's hooks told agents this week, session by session, and what it held back.
   const told = await api("/api/told?" + q({ repo, days: 7 })).catch(() => null);
-  data = { who: prefs.who || null, repos, suggested, kept, home, scan, plan, memory, lessonFile, proposals, threads, askSuggestions, rules, schedule, runs: Array.isArray(runs) ? runs : [], runInfo, effects: Array.isArray(effects) ? effects : [], queries: (asked.queries || []).filter((x) => x.tool !== "terminal"), lessonFinds: asked.lessonFinds || {}, lessonText: asked.lessonText || {}, told, handoffs: Array.isArray(handoffs) ? handoffs : [], tools: Array.isArray(tools) ? tools : [] };
+  data = { prefs, who: prefs.who || null, repos, suggested, kept, home, scan, plan, memory, lessonFile, proposals, threads, askSuggestions, rules, schedule, runs: Array.isArray(runs) ? runs : [], runInfo, effects: Array.isArray(effects) ? effects : [], queries: (asked.queries || []).filter((x) => x.tool !== "terminal"), lessonFinds: asked.lessonFinds || {}, lessonText: asked.lessonText || {}, told, handoffs: Array.isArray(handoffs) ? handoffs : [], tools: Array.isArray(tools) ? tools : [] };
 }
 
 /* Autonomous runs: sessions working together in a repo, each in a role (subagents, or agents in their own worktrees),
@@ -1829,40 +1833,94 @@ function askedSection() {
   </div><p class="note">Click a row to see what the agent got back, one card per match. Getting matches doesn't mean they helped: open one to judge. Questions that found nothing show where secondnature has nothing to offer yet. Questions you type in a terminal aren't counted.</p></section>`;
 }
 /* Settings: this repo's delivery and files, and this Mac's background checks. */
+/* Settings, in the design's five parts: when agents are told, the tools connected, this repo's files, privacy, and
+   which of your tools writes lessons. */
+let stab = picked.get("st") || "told", leaveAsk = false, purgeAsk = false;
+const STABS = [
+  ["told", "When agents are told", "When secondnature speaks up, and how much it says."],
+  ["tools", "Connected tools", "Which coding tools are connected, and whether each is working."],
+  ["repo", "This repo", "Files secondnature may write in this repo."],
+  ["privacy", "Privacy and data", "What is kept, where, and how to delete it."],
+  ["claude", "Your Claude", "Which Claude writes your lessons, and what it costs."],
+];
+const sizeText = (b) => (b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(b / 1e6))} MB`);
+const TOOL_HOW = {
+  "claude-code": "Hooks when a session starts, when you type, when a command fails, and when a subagent starts.",
+  antigravity: "Rules files in the repo and in each agent’s worktree, plus hooks for failing commands.",
+  cursor: "Rules files in .cursor/rules, kept out of git.",
+  codex: "Hooks in ~/.codex/hooks.json.",
+};
+const setRow = (title, sub, attrs, on) => `<li><div class="row"><div class="main" style="cursor:default"><div class="title">${title}</div><div class="sub">${sub}</div></div>
+    <button class="switch" role="switch" aria-checked="${!!on}" aria-label="${esc(title.replace(/<[^>]+>/g, ""))}" ${attrs}></button></div></li>`;
 function settingsView() {
+  const P = data.prefs || {}; const R = repo ? esc(short(repo)) : "";
+  const tabs = STABS.map(([k, label]) => `<button role="tab" class="ltab" aria-selected="${k === stab}" data-stab="${k}">${label}</button>`).join("");
+  const intro = STABS.find((x) => x[0] === stab)?.[2] || "";
   const dial = data.home.dial;
-  return `<div class="pagehead"><div><h1>Settings</h1><p class="lead">How lessons reach your agents${repo ? ` in ${esc(short(repo))}` : ""}, and what secondnature does on this Mac. <button class="linkbtn" data-tab="welcome">Open first-run setup</button></p></div></div>
-    <div class="stack s8">
-    ${repo ? `<section aria-labelledby="st">
-      <h2 id="st">${esc(short(repo))}</h2>
+  let body = "";
+  if (stab === "told") {
+    body = `<section class="card pad" aria-labelledby="sph" style="gap:10px"><h3 class="label" id="sph" style="text-transform:none;letter-spacing:0;font-size:15px;color:var(--ink)">When should secondnature speak up${repo ? ` in ${R}` : ""}?</h3>
+        <div class="seg" role="radiogroup" aria-label="Speaks up">${[["quiet", "Only when asked"], ["start", "At session start"], ["anytime", "Whenever relevant"]].map(([d, l]) => `<button role="radio" aria-checked="${dial === d}" data-speak-set="${d}">${l}</button>`).join("")}</div>
+        <p class="sub" style="font-size:13px">${esc(SPEAK[dial] || "")}</p></section>
       <ul class="group">
-        <li><div class="row"><div class="main" style="cursor:default"><div class="title">Tell agents when a session starts</div><div class="sub">Lessons told every session, and where you left off last time.</div></div>
-          <button class="switch" role="switch" aria-checked="${dial !== "quiet"}" aria-label="Tell agents when a session starts" data-dial="start"></button></div></li>
-        <li><div class="row"><div class="main" style="cursor:default"><div class="title">Tell agents mid-task too</div><div class="sub">When a word you chose comes up, or a command fails the way it has before.</div></div>
-          <button class="switch" role="switch" aria-checked="${dial === "anytime"}" aria-label="Tell agents mid-task too" data-dial="mid"></button></div></li>
-        <li><div class="row"><div class="main" style="cursor:default"><div class="title">Keep a copy of the plan in PLAN.md</div><div class="sub">Written at the root of this repo with the plan of the branch checked out, so each branch carries its own in git.</div></div>
-          <button class="switch" role="switch" aria-checked="${!!data.plan?.fileOn}" aria-label="Keep a copy of the plan in PLAN.md" data-plan-file></button></div></li>
-        <li><div class="row"><div class="main" style="cursor:default"><div class="title">Keep always-on lessons in CLAUDE.local.md</div><div class="sub">For this machine only: Claude Code reads that file at the start of every session here, even without secondnature's hooks. git is told to ignore it, so it's never committed, and the rest of the file is left as it is.</div></div>
-          <button class="switch" role="switch" aria-checked="${data.lessonFile?.mode === "local"}" aria-label="Keep always-on lessons in CLAUDE.local.md" data-lesson-file></button></div></li>
+        ${setRow("Hand over where you left off", "The next session on a branch gets the last session’s handoff and the branch plan.", 'data-pref="handOver"', P.handOver)}
+        ${setRow("Warn when a command fails like before", "Only mid-task, and only when a kept lesson’s word turns up in what failed.", 'data-pref="warnFails"', P.warnFails)}
+      </ul>
+      <p class="note"><strong style="color:var(--ink)">Limits, so agents aren’t buried.</strong> At most ${P.maxPerDelivery ?? 3} lessons at a time, and about ${(P.tokensPerSession ?? 1000).toLocaleString("en-GB")} tokens a session. When a limit is hit, secondnature tells the every-session lessons and the newest first, and the Claude Code panel lists what it left out.</p>`;
+  } else if (stab === "tools") {
+    const s = data.schedule;
+    body = `<ul class="group">${data.tools.map((t) => `<li><div class="row"><div class="main" style="cursor:default"><div class="title">${esc(t.name)}</div><div class="sub">${esc(TOOL_HOW[t.id] || "")}</div></div>
+          <span class="status ${t.on ? "good" : t.missing ? "warn" : ""}">${esc(t.state)}</span>
+          ${t.missing ? `<button class="btn2" data-rules-back="${esc(t.id)}">Put it back</button>` : ""}</div></li>`).join("")}</ul>
+      ${repo ? "" : `<p class="note">Pick a repo to see Cursor and Antigravity.</p>`}
+      <p class="note">secondnature checks these on every scan and puts back anything that dropped off. The same check in a terminal: <code>muninn status</code>.</p>
+      ${s?.supported ? `<ul class="group">${setRow("Check for new lessons every few hours", `For days spent in Cursor or Antigravity, where no hook runs when a session ends. A macOS background job looks every ${s.everyHours} hours whether a scan is due, and most of the time does nothing.`, "data-schedule", s.on)}</ul>` : ""}`;
+  } else if (stab === "repo") {
+    if (!repo) body = `<ul class="group"><li class="empty">Pick a repo in the sidebar to change the files secondnature writes in it.</li></ul>`;
+    else if (leaveAsk) body = `<section class="card pad" role="alertdialog" aria-labelledby="lvh" style="gap:10px"><strong id="lvh" style="color:var(--ink)">Leave ${R} alone?</strong>
+        <p>secondnature stops reading its sessions and tells its agents nothing. It also deletes what it kept for ${R}: its lessons, plans, handoffs and stored exchanges. This can’t be undone, though you can have it read the repo again later.</p>
+        <div style="display:flex;gap:8px"><button class="btnlink" data-leave-yes>Leave it alone</button><button class="btn2 big" data-leave-no>Keep it</button></div></section>`;
+    else body = `<p class="note" style="margin-top:0">These change files in the repo. Each can be turned off again.</p>
+      <ul class="group">
+        ${setRow("Share kept lessons with your team", "Writes .muninn/lessons.md and the same short list into CLAUDE.md, AGENTS.md and the Cursor and Antigravity rules. Reviewed in pull requests like code.", "data-share", P.shared)}
+        ${setRow("Keep the branch plan as PLAN.md", "So teammates and their agents can read where the work stands. Written at the root with the plan of the branch checked out.", "data-plan-file", data.plan?.fileOn)}
+        ${setRow("Always-on lessons in CLAUDE.local.md", "For Claude Code without hooks. On this Mac only, and ignored by git.", "data-lesson-file", data.lessonFile?.mode === "local")}
         ${rulesRow("antigravity", "Antigravity", ".agents/rules")}
         ${rulesRow("cursor", "Cursor", ".cursor/rules")}
       </ul>
-      ${dial === "quiet" ? `<p class="note">Both off: agents are told nothing unless they ask with muninn ask.</p>` : ""}
-    </section>` : `<ul class="group"><li class="empty">Pick a repo to change how its agents are told.</li></ul>`}
-    </div>
-    <div class="stack s4">${machineSettings()}</div>`;
+      ${P.shared ? `<p class="note">Shared. Commit the files to share them. Teammates who use secondnature get the lessons kept and measured.</p>` : ""}
+      <ul class="group"><li><div class="row"><div class="main" style="cursor:default"><div class="title">Leave ${R} alone</div><div class="sub">Not listed, not scanned, and agents here are told nothing. What secondnature kept for it is deleted.</div></div>
+        <button class="btn2" data-leave>Leave it alone…</button></div></li></ul>`;
+  } else if (stab === "privacy") {
+    const ign = P.ignored || [];
+    body = `<section class="card pad" style="gap:8px"><h3 class="label">What secondnature keeps</h3>
+        <p>Every exchange from your sessions, redacted, so you and your agents can search them: ${(P.kept?.exchanges ?? 0).toLocaleString("en-GB")} exchanges, about ${sizeText(P.kept?.bytes ?? 0)}.</p>
+        <p>Everything is in <code>${esc(P.home || "~/.muninn")}</code> on this Mac. Nothing goes anywhere else, except redacted excerpts to your own Claude to write lessons and answers.</p>
+        <p>Wrap anything you type in <code>&lt;private&gt;…&lt;/private&gt;</code> and it’s never stored, learned from or summarised.</p></section>
+      <section aria-labelledby="ignh"><h2 id="ignh">Repos left alone · ${ign.length}</h2>
+        <ul class="group">${ign.length ? ign.map((r) => `<li><div class="row"><div class="main" style="cursor:default"><div class="title">${esc(short(r))}</div></div><button class="btn2" data-unignore="${esc(r)}">Scan it again</button></div></li>`).join("") : `<li class="empty">None. Leave a repo alone from This repo.</li>`}</ul></section>
+      <section class="card pad" style="gap:8px"><h3 class="label">Delete everything secondnature keeps</h3>
+        <p>Lessons, plans, handoffs, search history, and its hooks. It can’t be undone.</p>
+        ${purgeAsk ? `<p>secondnature can’t delete itself while this page runs from it. Close the page, then run this in a terminal:</p><pre class="prwhy">muninn purge --yes</pre><div><button class="btn2 big" data-purge-no>Keep it</button></div>` : `<div><button class="btn2 big" data-purge>Delete everything…</button></div>`}</section>`;
+  } else {
+    const w = P.writer || ""; const f = P.found || {};
+    const line = w === "codex" ? (f.codex ? "codex was found on this Mac. It writes with your Codex login." : "codex wasn’t found on this Mac.") : w === "claude" ? (f.claude ? "claude was found on this Mac. It writes with your Claude Code login." : "claude wasn’t found on this Mac.")
+      : f.claude ? "Automatic: Claude Code was found, so it writes your lessons with your login." : f.codex ? "Automatic: Codex was found, so it writes your lessons with your login." : "Neither Claude Code nor Codex was found on this Mac, so lessons can’t be written yet.";
+    const ok = w ? f[w] : f.claude || f.codex;
+    const c = P.cost || {};
+    body = `<section class="card pad" style="gap:10px"><h3 class="label">Which Claude writes your lessons</h3>
+        <p>secondnature has no AI of its own. It asks your own Claude Code, or Codex, using your login.</p>
+        <label class="speak" for="writerPick">Writer <select id="writerPick" class="sel" ${P.writerFromEnv ? "disabled" : ""}>${[["", "Automatic"], ["claude", "Claude Code"], ["codex", "Codex"]].map(([v, l]) => `<option value="${v}" ${w === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+        <p class="sub" style="font-size:13px"><span class="status ${ok ? "good" : "warn"}">${ok ? "Found" : "Not found"}</span> ${esc(line)}${P.writerFromEnv ? " Set by MUNINN_WRITER, so it can’t be changed here." : ""}</p></section>
+      <section class="card pad" style="gap:8px"><h3 class="label">What it costs</h3>
+        <p>${c.calls ? `This week: ${c.usd != null ? `about $${c.usd.toFixed(2)} at list price, ` : ""}from ${c.calls.toLocaleString("en-GB")} request${c.calls === 1 ? "" : "s"}${c.unpriced ? `, ${c.unpriced} of them at an unknown price` : ""}.` : "No requests to your Claude this week."} These count against your own plan.</p>
+        <p class="sub" style="font-size:13px">Costs for other models are unknown until you add a price in <code>~/.muninn/config.json</code>. Unknown is shown as unknown, never as $0.</p></section>`;
+  }
+  return `<div class="pagehead"><div><h1>Settings</h1><p class="lead">${intro} <button class="linkbtn" data-tab="welcome">Open first-run setup</button></p></div></div>
+    <div class="s12"><div role="tablist" aria-label="Settings" class="ltabs">${tabs}</div></div>
+    <div class="stack s8">${body}</div>`;
 }
 /* The background job covers every repo, so it sits apart from one repo's settings. */
-function machineSettings() {
-  const s = data.schedule; if (!s?.supported) return "";
-  return `<section aria-labelledby="mac">
-      <h2 id="mac">Settings for this Mac</h2>
-      <ul class="group">
-        <li><div class="row"><div class="main" style="cursor:default"><div class="title">Check for new sessions in the background</div><div class="sub">Scans otherwise start only when a Claude Code or Codex session ends, so days spent only in Antigravity or Cursor would wait. With this on, a macOS background job asks every ${s.everyHours} hours whether a scan is due: a day since the last one, or 5 new sessions. Most of the time it does nothing.</div></div>
-          <button class="switch" role="switch" aria-checked="${s.on}" aria-label="Check for new sessions in the background" data-schedule></button></div></li>
-      </ul>
-    </section>`;
-}
 /** Cursor and Antigravity hear lessons only through rules files in the repo. Says when muninn turned them on by itself. */
 function rulesRow(tool, name, dir) {
   const r = data.rules?.[tool]; if (!r) return "";
@@ -1911,6 +1969,21 @@ document.addEventListener("click", async (e) => {
     if (el.dataset.prWrite !== undefined) { await writePrWhy(); return; }
     if (el.dataset.prCopy !== undefined) { await navigator.clipboard.writeText(prWhyFor[prKey()]?.text || ""); prCopied = true; draw(); return; }
     if (el.dataset.sess) { sessOpen = sessOpen === el.dataset.sess ? null : el.dataset.sess; draw(); return; }
+    if (el.dataset.stab) { stab = el.dataset.stab; leaveAsk = false; purgeAsk = false; rememberPick(); draw(); return; }
+    if (el.dataset.speakSet) { await api("/api/dial", { repo, dial: el.dataset.speakSet }); data.home.dial = el.dataset.speakSet; draw(); return; }
+    if (el.dataset.pref) { const k = el.dataset.pref, on = el.getAttribute("aria-checked") !== "true"; await api("/api/settings", { [k]: on }); data.prefs[k] = on; draw(); return; }
+    if (el.dataset.share !== undefined) {
+      const on = el.getAttribute("aria-checked") !== "true"; el.disabled = true;
+      const r = await api("/api/share", { repo, on }); data.prefs.shared = r.on && r.files.length > 0;
+      toast(on ? (r.files.length ? `Written to ${r.files.length} file${r.files.length === 1 ? "" : "s"}. Commit them to share.` : "No kept lessons to share yet.") : r.files.length ? `Took them out of ${r.files.join(", ")}. .muninn/lessons.md is left for you to remove in git.` : "Nothing to take out.");
+      draw(); return;
+    }
+    if (el.dataset.leave !== undefined) { leaveAsk = true; draw(); return; }
+    if (el.dataset.leaveNo !== undefined) { leaveAsk = false; draw(); return; }
+    if (el.dataset.leaveYes !== undefined) { el.disabled = true; const gone = repo; await api("/api/ignore", { repo: gone, on: true }); leaveAsk = false; repo = ""; stab = "privacy"; rememberPick(); toast(`Left ${short(gone)} alone.`); await refresh(); return; }
+    if (el.dataset.unignore) { await api("/api/ignore", { repo: el.dataset.unignore, on: false }); data.prefs.ignored = data.prefs.ignored.filter((r) => r !== el.dataset.unignore); toast("It’s read again from the next scan."); draw(); return; }
+    if (el.dataset.purge !== undefined) { purgeAsk = true; draw(); return; }
+    if (el.dataset.purgeNo !== undefined) { purgeAsk = false; draw(); return; }
     if (el.dataset.themePick) { document.documentElement.dataset.theme = el.dataset.themePick; try { localStorage.setItem("theme", el.dataset.themePick); } catch { /* kept until reload */ } drawSide(); return; }
     if (el.dataset.open) { open = open === el.dataset.open ? null : el.dataset.open; draw(); return; }
     if (el.dataset.frStart !== undefined) { el.disabled = true; await api("/api/firstrun", {}); frStep = 2; await loadFirstRun(); draw(); window.scrollTo(0, 0); return; }
@@ -2116,6 +2189,7 @@ document.addEventListener("change", (e) => {
   }
   if (e.target.id === "histRoutine") { hist.routine = e.target.checked; $("#histList").innerHTML = histList(); return; }
   if (e.target.dataset.repoPick !== undefined) { repo = e.target.value; impactFor = null; runPage = null; if (!repo && tab === "plan") tab = null; week = null; if (!asking) { askThread = []; askThreadId = null; } open = null; sel = null; planBranch = null; refresh(); }
+  if (e.target.id === "writerPick") { api("/api/settings", { writer: e.target.value }).then(async () => { data.prefs = await api("/api/settings?" + q({ repo })); draw(); toast("Saved."); }); return; }
   if (e.target.id === "planBranch") { planBranch = e.target.value; planEdit = null; Object.assign(hist, { area: "All", q: "", open: {}, limit: 8 }); refresh(); }
 });
 refresh().catch((e) => { $("#main").innerHTML = `<p class="lead">${esc(e.message)}</p>`; });

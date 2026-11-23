@@ -19,7 +19,7 @@ import { keepLine, openFlags, removeLine, restoreLine, rootOf } from "../memory/
 import { pickRunner, saveUsage } from "../learn/writer.js";
 import { reportData } from "../commands/report.js";
 import { defaultRoute, isPreference, similar, suggestKeyword, usefulKeyword, worthSentence } from "../commands/review.js";
-import { settings } from "../config.js";
+import { home, saveSettings, settings } from "../config.js";
 import { syncCursor } from "../deliver/cursor.js";
 import { lessonFileMode, setLessonFile } from "../deliver/local-file.js";
 import { apply, dismiss, listProposals, proposeInstructions, undo } from "../propose/index.js";
@@ -345,7 +345,46 @@ const routes: Record<string, Handler> = {
     return out;
   },
   // Your name for the sidebar: git's user.name, else your login on this Mac.
-  "GET /api/settings": async () => ({ maxPerDelivery: settings().maxPerDelivery, who: whoAmI() }),
+  "GET /api/settings": async (db, q) => {
+    const cfg = settings(); const repo = q.get("repo") || null;
+    const { findClient } = await import("../learn/writer.js");
+    const { ignoredRepos } = await import("../store/ignore.js");
+    const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
+    const c = (await db.execute({ sql: "SELECT count(*) n, sum(cost_usd) cost, count(cost_usd) priced FROM llm_calls WHERE ts>=?", args: [since] })).rows[0]!;
+    const exchanges = Number((await db.execute("SELECT count(*) n FROM chunks")).rows[0]?.n ?? 0);
+    const { statSync, readdirSync } = await import("node:fs");
+    let bytes = 0; try { for (const f of readdirSync(home())) { try { const st = statSync(join(home(), f)); if (st.isFile()) bytes += st.size; } catch { /* gone */ } } } catch { /* no home yet */ }
+    const shared = repo ? (await (await import("../deliver/team.js")).sharedIn(db, repo)).targets.size > 0 : false;
+    return {
+      who: whoAmI(), maxPerDelivery: cfg.maxPerDelivery, tokensPerSession: cfg.tokensPerSession, handOver: cfg.handOver !== false, warnFails: cfg.warnFails !== false,
+      writer: process.env.MUNINN_WRITER || cfg.writer || "", writerFromEnv: !!process.env.MUNINN_WRITER, found: { claude: !!findClient("claude"), codex: !!findClient("codex") },
+      cost: { calls: Number(c.n ?? 0), usd: c.priced ? Number(c.cost ?? 0) : null, unpriced: Number(c.n ?? 0) - Number(c.priced ?? 0) },
+      kept: { exchanges, bytes }, home: home(), ignored: [...(await ignoredRepos(db))], shared,
+    };
+  },
+  "POST /api/settings": async (_db, _q, b) => {
+    const change: Record<string, unknown> = {};
+    if (typeof b.handOver === "boolean") change.handOver = b.handOver;
+    if (typeof b.warnFails === "boolean") change.warnFails = b.warnFails;
+    if (b.writer === "" || b.writer === "claude" || b.writer === "codex") change.writer = b.writer;
+    saveSettings(change as never);
+    return { ok: true };
+  },
+  // Share kept lessons with your team: .muninn/lessons.md and the same list in CLAUDE.md, AGENTS.md and the rules files.
+  "POST /api/share": async (db, _q, b) => {
+    const repo = String(b.repo ?? ""); if (!repo) throw new Error("Pick a repo first.");
+    const t = await import("../deliver/team.js");
+    if (!b.on) return { files: await t.unshare(db, repo), on: false };
+    const r = await t.share(db, repo);
+    return { files: r.files, lessons: r.lessons, on: true };
+  },
+  // Leave a repo alone (this deletes what secondnature kept for it), or read it again.
+  "POST /api/ignore": async (db, _q, b) => {
+    const repo = String(b.repo ?? ""); if (!repo) throw new Error("Which repo?");
+    const ig = await import("../store/ignore.js");
+    if (b.on) return { removed: await ig.ignoreRepo(db, repo) };
+    await ig.unignoreRepo(db, repo); return { removed: 0 };
+  },
   "GET /api/version": async () => ({ boot: BOOT, page: pageHash() }),
   // Scans: when the last one finished, whether one is running, and "Check now".
   "GET /api/scan": async (db) => ({ running: scanRunning(), needsModel: !modelCached(), lastLearn: String((await db.execute("SELECT value FROM meta WHERE key='last_learn'")).rows[0]?.value ?? "") || null }),

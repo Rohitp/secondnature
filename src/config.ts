@@ -38,6 +38,12 @@ export const DEFAULTS = {
   prices: {} as Record<string, { input: number; output: number; cacheRead?: number }>,
   /** Coding tools you unticked in setup: no hooks or rules files for them, and their logs aren't read. */
   leaveAlone: [] as ("claude-code" | "codex" | "cursor" | "antigravity")[],
+  /** Give the next session on a branch where the last one left off. */
+  handOver: true,
+  /** Mid-task, tell a kept lesson whose word turns up in a failed command's output. */
+  warnFails: true,
+  /** Which of your tools writes lessons and answers: "claude", "codex", or "" for whichever is found. MUNINN_WRITER overrides. */
+  writer: "" as "" | "claude" | "codex",
 };
 export type Settings = typeof DEFAULTS;
 export function settings(): Settings {

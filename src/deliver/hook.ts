@@ -98,7 +98,7 @@ export async function deliver(db: Client, client: string, input: HookInput): Pro
   const teamFile = team.targets.has(client === "codex" ? "agents" : "claude") ? team.ids : new Set<string>();
   if (event === "SessionStart" || event === "SubagentStart") {
     rows = (await db.execute({ sql: `SELECT l.id,l.text,l.always_on,l.updated_at,l.role,NULL pattern FROM lessons l WHERE ${scope} AND l.always_on=1`, args: [repo, repo, role] })).rows as unknown as Row[];
-  } else if (event === "UserPromptSubmit" || failed(event, input)) {
+  } else if (event === "UserPromptSubmit" || (failed(event, input) && settings().warnFails !== false)) {
     const hay = event === "UserPromptSubmit" ? input.prompt ?? "" : `${input.tool_input?.command ?? fileCall(input)?.cmd ?? ""}\n${input.error ?? responseText(input.tool_response)}`;
     const all = (await db.execute({ sql: `SELECT l.id,l.text,l.always_on,l.updated_at,l.role,t.pattern FROM lessons l JOIN triggers t ON t.lesson_id=l.id WHERE ${scope}`, args: [repo, repo, role] })).rows as unknown as Row[];
     rows = all.filter((r) => r.pattern && matches(r.pattern, hay));
@@ -136,7 +136,7 @@ export async function deliver(db: Client, client: string, input: HookInput): Pro
   let handoff: string | null = null;
   const freshStart = event === "SessionStart" && (input.source === "startup" || input.source === "clear") && !!repo && !!input.cwd;
   const branch = freshStart ? currentBranch(input.cwd!) : null;
-  if (freshStart && repo) {
+  if (freshStart && repo && cfg.handOver !== false) {
     const h = branch ? await latestHandoff(db, repo, branch, cfg.handoffDays, session) : null;
     if (h) {
       handoff = handoffText(h, cfg.handoffStaleDays);
