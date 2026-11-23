@@ -418,6 +418,16 @@ pre code { background: none; padding: 0; }
 .meterbar { height: 6px; border-radius: 3px; background: var(--fill); overflow: hidden; } .meterbar span { display: block; height: 100%; background: var(--link); border-radius: 3px; }
 .saved { font-weight: 600; color: var(--on); white-space: nowrap; }
 @media (max-width: 700px) { .trims > li { grid-template-columns: 1fr; } .chart { height: 200px; } }
+/* Plan: goal, next steps and history on the left; where you left off, runs and PLAN.md on the right. */
+.group.flat { border: 0; border-radius: 0; }
+.planline { all: unset; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px; width: 100%; cursor: pointer; border-radius: 6px; padding: 2px 0; }
+.planline:hover .goaltext, .planline:hover > span:first-child { text-decoration: underline; text-decoration-color: var(--line-strong); }
+.planline:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+.goaltext { font: 600 19px/1.35 var(--display); color: var(--ink); }
+.hodl { margin: 0; display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 8px 12px; }
+.hodl dt { color: var(--muted); } .hodl dd { margin: 0; color: var(--body); overflow-wrap: anywhere; }
+.card .hist { border-top: 0; }
+@media (max-width: 600px) { .hodl { grid-template-columns: 1fr; } .hodl dd { margin-bottom: 6px; } }
 </style>
 </head>
 <body>
@@ -728,26 +738,39 @@ function planSection() {
   const merged = data.plan.branches.find((b) => b.name === data.plan.branch)?.merged;
   // Runs on this branch: any of their sessions worked on it.
   const branchRuns = data.runs.filter((r) => r.sessions.some((s) => s.branch === data.plan.branch));
-  return `<div class="pagehead"><div>
-      <h1>Plan for <label class="vh" for="planBranch">Branch</label><select id="planBranch" class="picker" style="font:inherit;border-bottom:2px solid var(--ink)">${data.plan.branches.map((b) => `<option value="${esc(b.name)}" ${b.name === data.plan.branch ? "selected" : ""}>${esc(b.name)}${b.name === data.plan.checkedOut ? " (checked out)" : b.merged ? " (merged)" : ""}</option>`).join("")}</select></h1>
-      <p class="lead">${merged ? "This branch is merged, so its work is finished. " : ""}${empty ? "Each branch is its own piece of work. secondnature builds its plan from the sessions on it, and you can write your own." : "Rewritten as your sessions go and checked against the branch's commits. Agents on this branch get it when a session starts; anything you write stays as you wrote it."}</p>
-    </div><button class="btn" data-ask-open>Ask about this branch</button></div>
-    <div class="stack s7">
-      <ul class="group">
-        ${planEdit === "goal" ? `<li>${planEditor("goal", "", p.goal?.text ?? "", "What this project is trying to do")}</li>`
-          : `<li><div class="row"><button class="main" data-plan-edit="goal"><div class="sub" style="margin:0 0 2px">Goal</div><div class="title" style="font-size:16px;line-height:23px;font-weight:600">${p.goal ? esc(p.goal.text) : '<span style="color:var(--link)">Add a goal</span>'}</div></button></div></li>`}
-        ${planEdit === "status" ? `<li>${planEditor("status", "", p.status?.text ?? "", "Where things stand, in a few sentences")}</li>`
-          : `<li><div class="row"><button class="main" data-plan-edit="status"><div class="sub" style="margin:0 0 2px">Where it stands${p.status ? ` · ${p.status.by_person ? "written by you" : `updated ${esc(shortDate(p.status.at))}`}` : ""}</div><div class="title">${p.status ? esc(p.status.text) : '<span style="color:var(--link)">Add a summary</span>'}</div></button></div></li>`}
-      </ul>
-      <section><h2>Next · ${p.open.length}</h2><ul class="group">
-        ${p.open.map(openRow).join("")}
-        ${planEdit === "new" ? `<li>${planEditor("open", "", "", "A next step or open question")}</li>` : `<li><button class="more" data-plan-new>+ Add a next step</button></li>`}
-      </ul></section>
+  // Where the last session on this branch left off: the handoff the next session here is told.
+  const ho = data.handoffs.find((h) => h.branch === data.plan.branch && h.repo_id === repo); const hp = ho ? handoffParts(ho.text) : null;
+  const HO_LABEL = { Done: "What changed", Open: "Still open", Decided: "Decided", Next: "Next" };
+  return `<header class="homehead"><div><h1>Plan for ${esc(data.plan.branch)}</h1>
+      <p class="lead">${merged ? "This branch is merged, so its work is finished. " : ""}${empty ? "Each branch is its own piece of work. secondnature builds its plan from the sessions on it, and you can write your own." : "Built from your sessions on this branch. Agents get it when a session starts here. You can edit any line."}</p></div>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center"><label class="speak" for="planBranch">Branch <select id="planBranch" class="sel mono" style="min-height:44px">${data.plan.branches.map((b) => `<option value="${esc(b.name)}" ${b.name === data.plan.branch ? "selected" : ""}>${esc(b.name)}${b.name === data.plan.checkedOut ? " (checked out)" : b.merged ? " (merged)" : ""}</option>`).join("")}</select></label>
+      <button class="btn2 big" data-ask-open>Ask about this branch</button></div></header>
+    <div class="homegrid">
+    <div class="homecol">
+      <section class="card pad" aria-labelledby="goalh" style="gap:6px">
+        <h3 class="label" id="goalh">Goal</h3>
+        ${planEdit === "goal" ? planEditor("goal", "", p.goal?.text ?? "", "What this branch is trying to do")
+          : `<button class="planline" data-plan-edit="goal"><span class="goaltext">${p.goal ? esc(p.goal.text) : '<span style="color:var(--link)">Add a goal</span>'}</span></button>`}
+        ${planEdit === "status" ? planEditor("status", "", p.status?.text ?? "", "Where things stand, in a few sentences")
+          : `<button class="planline" data-plan-edit="status"><span style="color:var(--body)">${p.status ? esc(p.status.text) : '<span style="color:var(--link)">Add where it stands</span>'}</span>${p.status ? `<span class="sub">${p.status.by_person ? "Written by you" : `Updated ${esc(shortDate(p.status.at))}`}</span>` : ""}</button>`}
+      </section>
+      <section class="card" aria-labelledby="nexth">
+        <div class="cardhead"><h2 id="nexth">Next · ${p.open.length}</h2><span class="sub">Tick one off and agents stop being told it</span></div>
+        <ul class="group flat">${p.open.map(openRow).join("")}
+          ${planEdit === "new" ? `<li>${planEditor("open", "", "", "A next step or open question")}</li>` : `<li><button class="more" data-plan-new>+ Add a next step</button></li>`}</ul>
+      </section>
+      ${hasHist ? `<section class="card" aria-label="Done and decided"><div class="cardhead"><h2>Done and decided</h2><span class="sub">With what each decision led to</span></div>${historyBlock()}</section>` : `<section class="card pad"><h2>Done and decided</h2><p>Nothing finished on this branch yet. Done steps and the decisions that still hold show here.</p></section>`}
     </div>
-    <div class="stack s5">
-      ${branchRuns.length ? `<section><h2>Activity on ${esc(data.plan.branch)}</h2><ul class="group">${branchRuns.slice(0, 3).map((r) => { const n = data.runInfo[r.id]?.numbers; return `<li><div class="row"><button class="main" data-run-open="${esc(r.id)}"><div class="title" style="font-weight:500">${esc(runName(r))}</div><div class="sub">Run · ${esc(shortDate(r.started_at))}, ${esc(clock(r.started_at))} · ${r.roles.filter((x) => x !== "main").length} roles${n?.rework ? ` · <span class="status warn">${n.rework} fix${n.rework === 1 ? "" : "es"} after approval</span>` : ""}</div></button></div></li>`; }).join("")}</ul></section>` : ""}
-      ${hasHist ? `<section><h2>Done and decided</h2><div class="group">${historyBlock()}</div></section>` : `<section><h2>Done and decided</h2><ul class="group"><li class="empty">Nothing finished on this branch yet. Done steps and the decisions that still hold show here.</li></ul></section>`}
-    </div>`;
+    <div class="homecol">
+      <section class="card pad" aria-labelledby="hoh">
+        <div style="display:flex;flex-direction:column;gap:2px"><h2 id="hoh">Where you left off</h2>
+          <span class="sub">${ho ? `Written when your last session here ended, in ${esc(TOOL_NAMES[ho.tool] || ho.tool)}, ${esc(ago(ho.created_at))}. The next session on this branch is told this, in any tool.` : "Written when a session on this branch ends. The next session here is told it, in any tool."}</span></div>
+        ${ho ? `<dl class="hodl">${["Done", "Open", "Decided", "Next"].filter((k) => hp[k]).map((k) => `<dt>${HO_LABEL[k]}</dt><dd>${esc(clip(hp[k], 400))}</dd>`).join("")}</dl>` : `<p>No session on ${esc(data.plan.branch)} has ended with a summary yet.</p>`}
+      </section>
+      ${branchRuns.length ? `<section class="card" aria-labelledby="runsh"><div class="cardhead"><h2 id="runsh">Runs on ${esc(data.plan.branch)}</h2><span class="sub">Agents working together</span></div><ul class="group flat">${branchRuns.slice(0, 3).map((r) => { const n = data.runInfo[r.id]?.numbers; return `<li><div class="row"><button class="main" data-run-open="${esc(r.id)}"><div class="title" style="font-weight:500">${esc(runName(r))}</div><div class="sub">${r.roles.filter((x) => x !== "main").length} roles${n?.rework ? ` · <span class="status warn">${n.rework} fix${n.rework === 1 ? "" : "es"} after approval</span>` : ""}</div></button></div></li>`; }).join("")}</ul></section>` : ""}
+      <section class="card" style="padding:6px 18px"><div class="row" style="padding:10px 0;min-height:64px"><div class="main" style="cursor:default"><div class="title" style="font-weight:600">Keep this plan in the repo as PLAN.md</div><div class="sub" style="font-size:13px">So teammates and their agents can read it. Written at the root of the repo for the branch checked out, and reviewed in pull requests like code.</div></div>
+        <button class="switch" role="switch" aria-checked="${!!data.plan.fileOn}" aria-label="Keep this plan in the repo as PLAN.md" data-plan-file></button></div></section>
+    </div></div>`;
 }
 async function planDo(body) { const r = await api("/api/plan", { repo, branch: data.plan.branch, ...body }); data.plan = r; planEdit = null; draw(); }
 
