@@ -24,6 +24,7 @@ const USAGE = `muninn: lessons that carry across coding sessions
   muninn memory [--all-repos]   Lines in CLAUDE.md that may be out of date
   muninn plan tidy [--all-repos]  Rewrite branch plans, checked against git
   muninn plan history [--all-repos]  Group finished steps into outcomes, and give decisions their reasons
+  muninn plan                   Where this branch stands: goal, next steps, decisions
   muninn handoff [--list]       Where the last session on this branch left off
   muninn setup                  Set everything up and take a first look (start here)
   muninn connect                Connect (or re-check) hooks, plugin, MCP and the background job for every tool here
@@ -198,7 +199,7 @@ async function main() {
     case "export": return (await import("./commands/lessons.js")).exportLessons(args);
     case "purge": return (await import("./commands/lessons.js")).purge(args);
     case "install": { const m = await import("./commands/install.js"); return args.includes("--learn") ? m.installLearnHook() : m.install(); }
-    case "uninstall": { (await import("./commands/install.js")).uninstall(); (await import("./commands/connect.js")).markDisconnected(); console.log('Removed muninn\'s hooks. Lessons are kept. muninn won\'t add them back on its own; "muninn connect" does.'); return; }
+    case "uninstall": { (await import("./commands/install.js")).uninstall(); (await import("./commands/connect.js")).markDisconnected(); const { mark, c } = await import("./term.js"); console.log(`${mark.ok()} Removed secondnature's hooks. Your lessons are kept, and it won't add the hooks back on its own.\nTo undo: ${c.cmd("muninn connect")}`); return; }
     case "ask": return (await import("./commands/ask.js")).ask(args);
     case "mcp": return (await import("./mcp/install.js")).mcpCmd(args);
     case "related": {
@@ -286,10 +287,12 @@ async function main() {
     case "connect": { console.log("Connecting muninn to the coding tools on this machine:"); await (await import("./commands/connect.js")).connectEverything(); return; }
     case "schedule": return (await import("./commands/schedule.js")).schedule(args[0] ?? "");
     case "keywords": return (await import("./commands/status.js")).keywords();
-    case "pause": writeFileSync(join(ensureHome(), "paused"), ""); console.log("Paused."); return;
-    case "resume": rmSync(join(ensureHome(), "paused"), { force: true }); console.log("Resumed."); return;
+    case "pause": { const { mark, next } = await import("./term.js"); writeFileSync(join(ensureHome(), "paused"), ""); console.log(`${mark.ok()} Paused. Agents aren't told anything, and sessions aren't read, until you resume.\nTo undo: ${next("muninn resume").slice(6)}`); return; }
+    case "resume": { const { mark } = await import("./term.js"); rmSync(join(ensureHome(), "paused"), { force: true }); console.log(`${mark.ok()} Resumed. Agents are told your lessons again from their next session.`); return; }
     case "hook": return runHook(args[args.indexOf("--client") + 1] ?? "unknown", args.includes("--event") ? args[args.indexOf("--event") + 1] : undefined);
-    default: console.log(USAGE); if (cmd && cmd !== "help" && cmd !== "--help") process.exitCode = 1;
+    case undefined: return (await import("./commands/home.js")).homeScreen(USAGE.split("\n").filter((l) => /^  muninn /.test(l)).length);
+    case "help": case "--help": case "-h": console.log(USAGE); return;
+    default: console.log(USAGE); process.exitCode = 1;
   }
 }
 /** True when the session's folder is a git repo that no scan has looked at yet. */

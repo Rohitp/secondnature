@@ -95,3 +95,39 @@ export async function homeData(db: Client, repo: string | null, session?: string
     cameBack, carry,
   };
 }
+
+/** `muninn` with nothing after it: what needs you, the week in a sentence, and the commands grouped by when you'd use them. */
+export async function homeScreen(commandCount: number) {
+  const { c, mark, next, pad, plural } = await import("../term.js");
+  const { openDb } = await import("../store/db.js");
+  const { repoIdentity } = await import("../repo/identity.js");
+  const { currentBranch } = await import("../handoff/handoff.js");
+  const { health } = await import("./status.js");
+  const db = await openDb();
+  const repo = repoIdentity(process.cwd());
+  const branch = repo ? currentBranch(process.cwd()) : null;
+  const h = await homeData(db, repo);
+  const hl = await health(db);
+  const out: string[] = [];
+  out.push(`${c.bold("secondnature")}${c.dim(repo ? ` · ${shortRepo(repo)}${branch ? ` · ${branch}` : ""}` : " · not in a git repo")}`, "");
+  // What needs you, most pressing first, each with its one next step.
+  const needs: [string, string][] = [];
+  if (hl.state === "not-set-up") needs.push(["secondnature isn't set up on this machine, so agents aren't told anything.", "muninn setup"]);
+  else if (hl.state === "paused") needs.push(["secondnature is paused, so agents aren't told anything.", "muninn resume"]);
+  else if (hl.state === "problem") needs.push(["secondnature had a problem the last time Claude Code called it.", "muninn status"]);
+  if (h.waiting.count) needs.push([`${c.bold(`${plural(h.waiting.count, "new lesson")} to review.`)} Agents aren't told until you keep one.`, "muninn ui"]);
+  if (h.cameBack.length) needs.push([`${plural(h.cameBack.length, "problem")} you kept a lesson for came back: “${h.cameBack[0]!.text}”${h.cameBack.length > 1 ? " and others" : ""}.`, "muninn report"]);
+  if (needs.length) for (const [what, cmd] of needs) out.push(`${mark.need()} ${what}`, `  ${next(cmd)}`);
+  else out.push(`${mark.ok()} Nothing needs you.${repo ? "" : " Run muninn inside a git repo to see that repo."}`);
+  out.push("");
+  const w = h.week;
+  const week = [w.sessions ? `lessons were told in ${plural(w.sessions, "session")}.` : "nothing was told to your agents yet."];
+  if (w.problems.kept) week.push(w.problems.cameBack ? `${w.problems.cameBack} of the ${plural(w.problems.kept, "problem")} you kept a lesson for came back.` : `None of the ${plural(w.problems.kept, "problem")} you kept a lesson for came back.`);
+  out.push(`This week: ${week.join(" ")}`, "");
+  const group = (title: string, rows: [string, string][]) => { out.push(c.bold(title)); for (const [cmd, what] of rows) out.push(`  ${c.cmd(pad(cmd, 20))}${c.dim(what)}`); out.push(""); };
+  group("Every day", [["muninn ui", "open the page"], ['muninn ask "…"', "ask about your past work"], ["muninn plan", "where this branch stands"]]);
+  group("Check on it", [["muninn status", "is everything connected"], ["muninn report", "is it helping"], ["muninn insights", "where agents wasted effort this week"]]);
+  group("Share and undo", [["muninn share", "put this repo's lessons in the repo, for your team"], ["muninn pause", "stop telling agents for now"], ["muninn uninstall", "remove the hooks, keep your lessons"]]);
+  out.push(`${c.dim(`All ${commandCount} commands:`)} ${c.cmd("muninn help")}`);
+  console.log(out.join("\n"));
+}
