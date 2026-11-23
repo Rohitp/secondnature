@@ -115,6 +115,8 @@ export async function askData(db: Client, q: string, here: string | null, opts: 
 export async function ask(args: string[]) {
   const q = args.filter((a) => !a.startsWith("--")).join(" ").trim();
   if (!q) { console.error('Usage: muninn ask "question"'); process.exitCode = 1; return; }
+  // A person at a terminal gets a written answer with its sources; agents and scripts get the matches to read.
+  if ((await import("../store/queries.js")).whoIsAsking().tool === "terminal" && !args.includes("--matches")) { if (await writtenAnswer(q, args.includes("--more"))) return; }
   const db = await openDb(); const t0 = Date.now(); const repo = repoIdentity(process.cwd());
   const hits = await askData(db, q, repo);
   // No kept lesson answers it: the answer may be in a past session, as it often is for how something was done.
@@ -130,4 +132,42 @@ export async function ask(args: string[]) {
   const found = hits.length ? hits.map((h) => ({ kind: (h.kind === "note" ? "note" : "lesson") as "note" | "lesson", id: h.id })) : past.map((h) => ({ kind: "session" as const, id: h.session }));
   await recordQuery(db, { repo, branch: repo ? currentBranch(process.cwd()) : null, session: who.session, tool: who.tool, surface: "ask", query: q, results: found.length, result_ids: found, ms: Date.now() - t0, answer: out });
   console.log(out);
+}
+
+/** The written answer, per the design's "muninn ask": the answer, then where it came from, then how to follow up. One call to your Claude. */
+async function writtenAnswer(q: string, more: boolean): Promise<boolean> {
+  const { pickRunner, saveUsage } = await import("../learn/writer.js");
+  const { modelCached, loadEmbedder } = await import("../embed/model.js");
+  const runner = pickRunner("background");
+  if (!runner || !modelCached()) return false; // fall back to the matches
+  const t = await import("../term.js");
+  const { askInThread } = await import("./answer.js");
+  const db = await openDb(); const repo = repoIdentity(process.cwd());
+  const key = "ask_thread:terminal";
+  const thread = more ? String((await db.execute({ sql: "SELECT value FROM meta WHERE key=?", args: [key] })).rows[0]?.value ?? "") || null : null;
+  const WORDS = { search: "Searching your lessons, plans and past sessions…", write: "Writing the answer with your Claude…" } as Record<string, string>;
+  const live = process.stdout.isTTY;
+  const stage = (s: { stage: string }) => { if (live && WORDS[s.stage]) process.stdout.write(`\r\x1b[2K${t.c.dim(WORDS[s.stage]!)}`); };
+  let r;
+  try { r = await askInThread(db, q, repo, runner, await loadEmbedder(), thread, stage); }
+  finally { if (live) process.stdout.write("\r\x1b[2K"); await saveUsage(db, runner, "answer").catch(() => {}); }
+  await db.execute({ sql: "INSERT OR REPLACE INTO meta (key,value) VALUES (?,?)", args: [key, r.thread] });
+  const a = r.answer;
+  if (!a.answer) { console.log(`Nothing secondnature keeps answers that${repo ? ` in ${repo.split("/").pop()}` : ""}.\n${t.c.dim("It knows what's in your lessons, branch plans and past sessions.")}`); return true; }
+  const date = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "");
+  const cited = new Set([...a.answer.matchAll(/\[(\d+)\]/g)].map((m) => Number(m[1])));
+  const from = (cited.size ? a.sources.filter((s) => cited.has(s.n)) : a.sources).slice(0, 5);
+  // Markdown bold becomes terminal bold; code marks are dropped.
+  const text = a.answer.trim().replace(/\*\*([^*]+)\*\*/g, (_, x) => t.c.bold(x)).replace(/`([^`]+)`/g, "$1");
+  console.log(`\n${text}\n`);
+  const KIND: Record<string, string> = { session: "session", lesson: "kept lesson", note: "note", decision: "decision", done: "finished work", goal: "branch goal", handoff: "where a session left off" };
+  const TOOL: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex", cursor: "Cursor", antigravity: "Antigravity" };
+  const what = (s: (typeof from)[number]) => {
+    const head = `${KIND[s.kind] ?? s.kind}${s.kind === "session" && s.tool ? ` in ${TOOL[s.tool] ?? s.tool}` : ""}${s.branch ? `, on ${s.branch}` : ""}`;
+    const one = s.text.replace(/\s+/g, " ").trim().replace(/^(DONE|DECISION|DECIDED|GOAL|NOTE|LESSON|HANDOFF)\b[^:]{0,40}:\s*/i, "");
+    return s.kind === "session" ? head : `${head}: ${one.length > 50 ? `${one.slice(0, one.lastIndexOf(" ", 49) > 25 ? one.lastIndexOf(" ", 49) : 49)}…` : one}`;
+  };
+  if (from.length) { console.log(t.c.dim("From")); for (const s of from) console.log(`  ${t.c.dim(t.pad(`[${s.n}] ${date(s.date)}`, 12))}${what(s)}`); console.log(""); }
+  console.log(`Ask a follow-up: ${t.c.cmd('muninn ask --more "…"')}`);
+  return true;
 }
