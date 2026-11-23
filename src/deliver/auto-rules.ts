@@ -1,5 +1,6 @@
 import type { Client } from "@libsql/client";
 import type { Session } from "../logs/types.js";
+import { leftAlone } from "../config.js";
 
 /**
  * Cursor and Antigravity have no hooks, so their agents only hear lessons through rules files in the repo.
@@ -23,6 +24,7 @@ const autoKey = (t: RulesTool, repo: string) => `rules_auto:${t}:${repo}`;
 export async function autoTurnOn(db: Client, byRepo: Map<string, Session[]>): Promise<{ tool: RulesTool; repo: string; files: string[] }[]> {
   const out: { tool: RulesTool; repo: string; files: string[] }[] = [];
   for (const tool of RULES_TOOLS) {
+    if (leftAlone(tool)) continue; // you unticked it in setup
     const m = await mod(tool);
     const on = new Set(await m.enabled(db));
     for (const [repo, sessions] of byRepo) {

@@ -1,6 +1,6 @@
 import { closeSync, globSync, openSync, readFileSync, readSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { logRoots } from "../config.js";
+import { leftAlone, logRoots } from "../config.js";
 import { repoIdentity } from "../repo/identity.js";
 import { readClaude } from "./claude-code.js";
 import { readCodex } from "./codex.js";
@@ -62,6 +62,7 @@ export function scanLogs(): Scan {
   for (const s of all) for (const x of [s, ...(s.subagents ?? [])]) { try { x.role = roleOf(x); } catch { /* roles are extra */ } }
   for (const s of all) {
     if (!s.events.some((e) => e.k === "typed")) continue;
+    if (leftAlone(s.tool)) continue; // a tool you unticked in setup isn't read
     if (isOwnRun(s)) { scan.ownRuns++; continue; }
     const repo = s.cwd ? repoIdentity(s.cwd) : null;
     if (!repo) { scan.missingFolder++; continue; }
@@ -103,4 +104,18 @@ export function reposInLogs(): Map<string, string> {
   const repos = new Map<string, string>();
   for (const d of folders) { const r = repoIdentity(d); if (r && !repos.has(r)) repos.set(r, d); }
   return repos;
+}
+
+/** Each coding tool on this machine, with how many sessions and repos its logs hold, for setup's "Found on this Mac". */
+export function toolsOnThisMac(codexInstalled: boolean): { id: "claude-code" | "cursor" | "antigravity" | "codex"; name: string; sessions: number; repos: number; installed: boolean }[] {
+  const f = logFiles();
+  const repos = (files: string[], tool: "claude" | "codex" | "cursor") => new Set(files.map((x) => folderOf(x, tool, f.roots.cursor)).filter(Boolean).map((d) => repoIdentity(d!)).filter(Boolean)).size;
+  const agRepos = new Set(f.antigravity.map((x) => { try { const d = readAntigravity(x).cwd; return d ? repoIdentity(d) : null; } catch { return null; } }).filter(Boolean)).size;
+  const has = (p: string) => { try { return globSync("*", { cwd: p }).length > 0; } catch { return false; } };
+  return [
+    { id: "claude-code" as const, name: "Claude Code", sessions: f.claude.length, repos: repos(f.claude, "claude"), installed: f.claude.length > 0 || has(dirname(f.roots.claude)) },
+    { id: "cursor" as const, name: "Cursor", sessions: f.cursor.length, repos: repos(f.cursor, "cursor"), installed: f.cursor.length > 0 || has(dirname(f.roots.cursor)) },
+    { id: "antigravity" as const, name: "Antigravity", sessions: f.antigravity.length, repos: agRepos, installed: f.antigravity.length > 0 || has(join(f.roots.antigravity, "antigravity")) },
+    { id: "codex" as const, name: "Codex", sessions: f.codex.length, repos: repos(f.codex, "codex"), installed: codexInstalled || f.codex.length > 0 },
+  ].filter((t) => t.installed);
 }

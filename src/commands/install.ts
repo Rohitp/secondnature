@@ -2,7 +2,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeF
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ensureHome } from "../config.js";
+import { ensureHome, leftAlone } from "../config.js";
 import { setAntigravityHooks } from "../deliver/antigravity-hook.js";
 
 export type Client = "claude-code" | "codex";
@@ -70,15 +70,16 @@ export function installFor(client: Client, events = Object.keys(EVENTS[client]))
 export function install(events = ALL_EVENTS) {
   // The `muninn` command reruns itself on this Node when the PATH offers an older one (the hooks use it directly).
   writeFileSync(join(ensureHome(), "node"), realpathSync(process.execPath));
-  const done = installFor("claude-code", events);
+  // Tools you unticked in setup get no hooks.
+  const done = leftAlone("claude-code") ? [] : installFor("claude-code", events);
   // Antigravity: mid-run warnings for its agents, where it's installed.
-  if (events.includes("PostToolUseFailure")) {
+  if (events.includes("PostToolUseFailure") && !leftAlone("antigravity")) {
     try {
       if (setAntigravityHooks((ev: string) => `"${realpathSync(process.execPath)}" "${cli()}" hook --client antigravity --event ${ev}`, true)) console.log("Added muninn to Antigravity's hooks (~/.gemini/config/hooks.json): its agents get a warning when a command keeps failing the same way, and lessons whose keywords match what you typed.");
     } catch (e) { console.log(`Couldn't add Antigravity's hooks: ${e instanceof Error ? e.message : String(e)}`); }
   }
-  const codex = codexPresent() ? installFor("codex", events.map((e) => (e === "PostToolUseFailure" ? "PostToolUse" : e))) : [];
-  if (!done.length && !codex.length) { console.log("muninn's hooks are already installed."); return; }
+  const codex = codexPresent() && !leftAlone("codex") ? installFor("codex", events.map((e) => (e === "PostToolUseFailure" ? "PostToolUse" : e))) : [];
+  if (!done.length && !codex.length) { if (!leftAlone("claude-code")) console.log("muninn's hooks are already installed."); return; }
   if ([...done, ...codex].includes("SessionEnd")) console.log('When a session ends, muninn writes a short handoff and may scan for lessons. Both send redacted excerpts to your Claude Code or Codex. Turn scans off with "autoLearn": false in muninn\'s config.json.');
   if (codex.length) console.log('Codex runs a new hook only after you trust it: open Codex, type /hooks, and trust the muninn entries. Until then Codex skips them.');
   if (done.length) console.log("Cursor also runs hooks from Claude Code's file. muninn spots Cursor and sends nothing there, since Cursor gets lessons through rules files (muninn cursor on).");
