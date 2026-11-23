@@ -44,8 +44,10 @@ export async function listLessons(db: Client, f: { repo?: string | null; status?
   const r = await db.execute({ sql: `SELECT ${COLS} FROM lessons ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY sessions DESC, last_seen DESC`, args });
   return r.rows as unknown as Lesson[];
 }
-export async function lessonVectors(db: Client, repo: string): Promise<{ id: string; status: string; text: string; vector: Float32Array | null; role?: string | null }[]> {
-  const r = await db.execute({ sql: "SELECT id,status,text,role,vector_extract(embedding) v FROM lessons WHERE repo_id=? AND embedding IS NOT NULL", args: [repo] });
+/** A repo's lessons with their vectors. With `withGlobal`, also the kept lessons told in every repo, wherever they were learned. */
+export async function lessonVectors(db: Client, repo: string, opts: { withGlobal?: boolean } = {}): Promise<{ id: string; status: string; text: string; vector: Float32Array | null; role?: string | null }[]> {
+  const where = opts.withGlobal ? "(repo_id=? OR (scope='global' AND status='live'))" : "repo_id=?";
+  const r = await db.execute({ sql: `SELECT id,status,text,role,vector_extract(embedding) v FROM lessons WHERE ${where} AND embedding IS NOT NULL`, args: [repo] });
   return r.rows.map((x) => ({ id: String(x.id), status: String(x.status), text: String(x.text), role: x.role == null ? null : String(x.role), vector: x.v ? Float32Array.from(JSON.parse(String(x.v))) : null }));
 }
 export async function addEvidence(db: Client, id: string, quotes: { tool: string; session: string; ts: string; quote: string }[]) {
@@ -146,4 +148,17 @@ export async function combine(db: Client, keepId: string, otherId: string, text?
   await db.execute({ sql: "INSERT OR IGNORE INTO triggers (id,lesson_id,pattern,created_at) SELECT lower(hex(randomblob(16))),?,pattern,created_at FROM triggers WHERE lesson_id=?", args: [keepId, otherId] });
   await decide(db, otherId, { status: "retired" });
   if (text) await decide(db, keepId, { text });
+}
+/**
+ * Adds a waiting suggestion to an older lesson that already says much the same, instead of keeping both.
+ * The older lesson keeps where and when it's told (every repo or one, every session or on a keyword),
+ * takes the new wording if one is given, and gets the suggestion's quotes. The suggestion is retired.
+ */
+export async function addToOlder(db: Client, newId: string, olderId: string, text?: string) {
+  const older = await getLesson(db, olderId);
+  if (!older || !["live", "proposed"].includes(older.status)) throw new Error("That older lesson isn't kept or waiting any more.");
+  if (older.id === newId) throw new Error("A lesson can't be added to itself.");
+  await combine(db, older.id, newId, text);
+  await db.execute({ sql: "UPDATE lessons SET why=coalesce(why,(SELECT why FROM lessons WHERE id=?)) WHERE id=?", args: [newId, older.id] });
+  return older.id;
 }

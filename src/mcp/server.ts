@@ -96,11 +96,12 @@ export const TOOLS = [
   },
   {
     name: "review_lesson",
-    title: "Keep or dismiss a suggested lesson",
-    description: "Keep or dismiss a lesson waiting for the engineer's review, by the id list_lessons shows. Only when the engineer has said, in this chat, to keep or dismiss that specific lesson: never on your own judgement, and never for several lessons from one general instruction. Keeping makes agents be told it, with muninn's usual choice of when (every session, or on a keyword).",
+    title: "Keep, dismiss or fold in a suggested lesson",
+    description: "Keep or dismiss a lesson waiting for the engineer's review, by the id list_lessons shows, or add it to the older lesson list_lessons says it is close to. Only when the engineer has said, in this chat, to do that to that specific lesson: never on your own judgement, and never for several lessons from one general instruction. Keeping makes agents be told it, with muninn's usual choice of when (every session, or on a keyword). add_to_older retires the suggestion and changes the older lesson, which keeps where it's told: if that lesson is told in every repo, the change reaches every repo, so say so and agree its new wording with the engineer first.",
     inputSchema: { type: "object", properties: {
       id: { type: "string", description: "The lesson's id or its first 8 characters, as list_lessons shows it." },
-      action: { type: "string", enum: ["keep", "dismiss"] },
+      action: { type: "string", enum: ["keep", "dismiss", "add_to_older"] },
+      text: { type: "string", description: "For add_to_older: the older lesson's new wording, as agreed with the engineer. Leave out to keep its words and only add the suggestion's quotes." },
       engineer_said: { type: "string", description: "The engineer's own words in this chat asking for this, quoted." },
     }, required: ["id", "action", "engineer_said"] },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -234,7 +235,19 @@ export async function callTool(db: Client, name: string, a: Args, embed: () => P
     found.push({ kind: "lesson", id: l.id });
     if (l.status !== "proposed") throw new Error(`That lesson isn't waiting for review: it's ${l.status === "live" ? "already kept" : l.status}.`);
     if (a.action === "dismiss") { await decide(db, l.id, { status: "rejected" }); await db.execute({ sql: "INSERT INTO lesson_versions (id,lesson_id,snapshot,changed_by,changed_at) VALUES (lower(hex(randomblob(16))),?,?,?,?)", args: [l.id, JSON.stringify({ status: "rejected", said }), "mcp", new Date().toISOString()] }); return `Dismissed: "${l.text.slice(0, 120)}". muninn won't suggest it again.`; }
-    if (a.action !== "keep") throw new Error("action is keep or dismiss.");
+    if (a.action === "add_to_older") {
+      const { similar } = await import("../commands/review.js");
+      const sim = await similar(db, l);
+      if (!sim) throw new Error("muninn doesn't see an older lesson close to this one. Keep or dismiss it instead.");
+      const { addToOlder } = await import("../store/lessons.js");
+      const text = typeof a.text === "string" && a.text.trim() ? a.text.trim().slice(0, 1000) : undefined;
+      await addToOlder(db, l.id, sim.lesson.id, text);
+      await db.execute({ sql: "INSERT INTO lesson_versions (id,lesson_id,snapshot,changed_by,changed_at) VALUES (lower(hex(randomblob(16))),?,?,?,?)", args: [l.id, JSON.stringify({ status: "retired", added_to: sim.lesson.id, said }), "mcp", new Date().toISOString()] });
+      found.push({ kind: "lesson", id: sim.lesson.id });
+      try { const { syncCursor } = await import("../deliver/cursor.js"); await syncCursor(db); } catch { /* rules files are a convenience */ }
+      return `Added to the older lesson [${sim.lesson.id.slice(0, 8)}]${text ? `, which now says: "${text.slice(0, 300)}"` : ", with its words unchanged"}. It's still told in ${sim.lesson.scope === "global" ? "every repo" : short(String(sim.lesson.repo_id))}. The suggestion is gone from the review list.`;
+    }
+    if (a.action !== "keep") throw new Error("action is keep, dismiss or add_to_older.");
     const { defaultRoute } = await import("../commands/review.js");
     const d = defaultRoute(l);
     await decide(db, l.id, { status: "live", ...(d.route === "always" ? { alwaysOn: true } : {}), ...(d.route === "keyword" && d.keywords.length ? { triggers: d.keywords } : {}), ...(d.global ? { global: true } : {}) });
@@ -299,10 +312,18 @@ export async function lessonsText(db: Client, repo: string | null, waitingOnly: 
   if (!rows.length) return waitingOnly ? "No suggestions are waiting." : `No lessons${repo ? ` for ${short(repo)}` : ""} yet.`;
   const verdict = new Map((await reportData(db, repo)).lessons.map((l) => [l.id, l.verdict]));
   for (const e of await roleEffects(db, repo)) verdict.set(e.id, e.summary);
+  // A waiting suggestion close to an older lesson: name it, so the engineer can add one to the other instead of keeping both.
+  const close = new Map<string, string>();
+  const { similar } = await import("../commands/review.js");
+  const { getLesson } = await import("../store/lessons.js");
+  for (const r of rows) if (r.status === "proposed") {
+    const l = await getLesson(db, String(r.id)); const sim = l ? await similar(db, l).catch(() => null) : null;
+    if (sim) close.set(String(r.id), `Close to ${sim.lesson.status === "live" ? "kept" : "waiting"} lesson [${sim.lesson.id.slice(0, 8)}], told in ${sim.lesson.scope === "global" ? "every repo" : short(String(sim.lesson.repo_id))}. It can be added to that lesson instead of kept on its own (review_lesson add_to_older).`);
+  }
   const line = (r: Record<string, unknown>) => {
     const when = r.status === "proposed" ? "waiting for review" : r.always_on ? "told every session" : r.kw ? `told when "${r.kw}" comes up` : "only when searched";
     const where = r.scope === "global" ? "every repo" : repo ? null : short(String(r.repo_id));
-    return `- [${String(r.id).slice(0, 8)}] ${String(r.text).slice(0, 400)}\n  (${[when, r.role ? `for the ${r.role} only` : null, where].filter(Boolean).join(", ")})${r.why ? `\n  Why: ${r.why}` : ""}${verdict.get(String(r.id)) ? `\n  How it's doing: ${verdict.get(String(r.id))}` : ""}`;
+    return `- [${String(r.id).slice(0, 8)}] ${String(r.text).slice(0, 400)}\n  (${[when, r.role ? `for the ${r.role} only` : null, where].filter(Boolean).join(", ")})${r.why ? `\n  Why: ${r.why}` : ""}${verdict.get(String(r.id)) ? `\n  How it's doing: ${verdict.get(String(r.id))}` : ""}${close.get(String(r.id)) ? `\n  ${close.get(String(r.id))}` : ""}`;
   };
   const kept = rows.filter((r) => r.status === "live"), waiting = rows.filter((r) => r.status === "proposed");
   return [kept.length ? `KEPT (${kept.length}):\n${kept.map(line).join("\n")}` : "", waiting.length ? `WAITING FOR REVIEW (${waiting.length}):\n${waiting.map(line).join("\n")}` : ""].filter(Boolean).join("\n\n");
