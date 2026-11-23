@@ -57,11 +57,12 @@ async function lessonDetail(db: Client, id: string) {
   return { ...l, missing, worth: worthSentence(l as any, defaultRoute(l).route), preference: isPreference(l), defaults: defaultRoute(l), repo_short: shortRepo(l.repo_id), origin, evidence, triggers, suggested, similar: sim ? { id: sim.lesson.id, text: sim.lesson.text, plain: sim.lesson.plain, status: sim.lesson.status, score: sim.score } : null };
 }
 
-/** A branch's plan for the page, defaulting to the branch checked out in the repo's folder, plus the other branches with plans. */
+/** Your first name for the sidebar: git's user.name, else your login on this Mac. */
 function whoAmI(): string {
   try { const n = execFileSync("git", ["config", "--global", "user.name"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(); if (n) return n.split(/\s+/)[0]!; } catch { /* no git name */ }
   try { return userInfo().username; } catch { return ""; }
 }
+/** A branch's plan for the page, defaulting to the branch checked out in the repo's folder, plus the other branches with plans. */
 async function planView(db: Client, repo: string, branch: string | null) {
   const row = (await db.execute({ sql: "SELECT paths FROM repos WHERE id=?", args: [repo] })).rows[0];
   const root = row ? ((JSON.parse(String(row.paths)) as string[]).find((p) => existsSync(p)) ?? null) : null;
@@ -226,7 +227,7 @@ const routes: Record<string, Handler> = {
   },
   "GET /api/handoffs": async (db, q) => {
     const repo = q.get("repo");
-    return (await db.execute({ sql: `SELECT id,repo_id,branch,tool,created_at,text FROM handoffs ${repo ? "WHERE repo_id=?" : ""} ORDER BY created_at DESC LIMIT 30`, args: repo ? [repo] : [] })).rows;
+    return (await db.execute({ sql: `SELECT id,repo_id,branch,session,tool,created_at,text FROM handoffs ${repo ? "WHERE repo_id=?" : ""} ORDER BY created_at DESC LIMIT 30`, args: repo ? [repo] : [] })).rows;
   },
   "GET /api/ask": async (db, q) => askData(db, q.get("q") ?? "", q.get("repo") || null, { includeWaiting: true, embed: await embed().catch(() => undefined) }),
   "POST /api/answer": async (db, _q, b) => {
@@ -363,6 +364,15 @@ const routes: Record<string, Handler> = {
     const saved = await m.savedFindings(db, runs);
     return Object.fromEntries(runs.map((r) => [r.id, { numbers: m.runNumbers(r), findings: saved[r.id] ?? null }]));
   },
+  // The pull request's "why" for a branch: the one written before, or a new one from your Claude.
+  "GET /api/pr-why": async (db, q) => { const repo = q.get("repo"), branch = q.get("branch"); if (!repo || !branch) throw new Error("Pick a repo and branch first."); return (await import("../commands/pr-why.js")).savedPrWhy(db, repo, branch); },
+  "POST /api/pr-why": async (db, _q, b) => {
+    const repo = String(b.repo ?? ""), branch = String(b.branch ?? ""); if (!repo || !branch) throw new Error("Pick a repo and branch first.");
+    const runner = pickRunner("judge"); if (!runner) throw new Error("Writing this needs Claude Code or Codex on this machine.");
+    try { return await (await import("../commands/pr-why.js")).writePrWhy(db, repo, branch, runner); } finally { await saveUsage(db, runner, "pull request why"); }
+  },
+  // The last few exchanges of the session that wrote a handoff, for "Show that session".
+  "GET /api/session-tail": async (db, q) => (await import("../commands/pr-why.js")).sessionTail(db, q.get("session") ?? ""),
   "GET /api/schedule": async () => { const m = await import("../commands/schedule.js"); return { supported: m.scheduleSupported(), on: m.scheduleOn(), everyHours: m.EVERY_HOURS }; },
   "POST /api/schedule": async (_db, _q, b) => { const m = await import("../commands/schedule.js"); m.setSchedule(!!b.on); return { supported: true, on: m.scheduleOn(), everyHours: m.EVERY_HOURS }; },
 };
