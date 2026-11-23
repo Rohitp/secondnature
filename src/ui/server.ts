@@ -37,6 +37,8 @@ const BOOT = randomBytes(6).toString("hex");
 const pageHash = () => createHash("sha1").update(page()).digest("hex").slice(0, 12);
 
 type Handler = (db: Client, q: URLSearchParams, body: any) => Promise<unknown>;
+/** Where the page's first-run setup is: connecting tools, downloading the model, reading sessions, done or failed. */
+const firstRun: { stage: "idle" | "connecting" | "model" | "reading" | "done" | "error"; error: string | null } = { stage: "idle", error: null };
 let embedder: Promise<Embed> | null = null;
 const embed = () => (embedder ??= modelCached() ? loadEmbedder() : Promise.reject(new Error("The search model isn't downloaded yet. Run muninn learn once.")));
 
@@ -275,6 +277,45 @@ const routes: Record<string, Handler> = {
     writeFileSync(file, proofHtml(proof));
     if (process.platform === "darwin") spawn("open", ["-R", file], { stdio: "ignore", detached: true }).unref();
     return { file };
+  },
+  // First run: what's on this Mac, then connect, download the model and read every repo, then the top finds.
+  "GET /api/firstrun": async (db) => {
+    const { logFiles, reposInLogs } = await import("../logs/discover.js");
+    const { installed, codexPresent } = await import("../commands/install.js");
+    const f = logFiles(); const repos = reposInLogs();
+    const tools = [
+      { id: "claude-code", name: "Claude Code", logs: f.claude.length, how: "Told by hooks: at session start, on your prompt, when a command fails" },
+      { id: "cursor", name: "Cursor", logs: f.cursor.length, how: "Told by rules files in each repo where you use it, kept out of git" },
+      { id: "antigravity", name: "Antigravity", logs: f.antigravity.length, how: "Told by rules and hooks, per agent role" },
+      { id: "codex", name: "Codex", logs: f.codex.length, how: "Told by hooks", present: codexPresent() },
+    ].filter((t) => t.logs > 0 || t.present || t.id === "claude-code");
+    const n = (sql: string) => db.execute(sql).then((r) => Number(r.rows[0]?.n ?? 0));
+    return {
+      tools, repos: repos.size, hooked: installed("claude-code").length > 0, model: modelCached(), writer: !!pickRunner("judge"),
+      stage: firstRun.stage, error: firstRun.error, scanning: scanRunning(),
+      lastLearn: String((await db.execute("SELECT value FROM meta WHERE key='last_learn'")).rows[0]?.value ?? "") || null,
+      found: await n("SELECT count(*) n FROM lessons WHERE status='proposed'"), kept: await n("SELECT count(*) n FROM lessons WHERE status='live'"),
+      foundRepos: await n("SELECT count(DISTINCT repo_id) n FROM lessons WHERE status='proposed'"),
+    };
+  },
+  "POST /api/firstrun": async () => {
+    if (firstRun.stage === "connecting" || firstRun.stage === "model" || firstRun.stage === "reading") return { stage: firstRun.stage };
+    Object.assign(firstRun, { stage: "connecting", error: null });
+    // Runs on after the request returns; the page polls GET /api/firstrun for the stage.
+    void (async () => {
+      try {
+        const { connectEverything } = await import("../commands/connect.js");
+        await connectEverything();
+        if (!modelCached()) { firstRun.stage = "model"; embedder = null; await loadEmbedder(); }
+        firstRun.stage = "reading";
+        startAutoScan({ force: true });
+        // The scan runs in its own process: wait for its lock to clear (it can take a few minutes).
+        await new Promise((r) => setTimeout(r, 3000));
+        while (scanRunning()) await new Promise((r) => setTimeout(r, 3000));
+        firstRun.stage = "done";
+      } catch (e) { Object.assign(firstRun, { stage: "error", error: e instanceof Error ? e.message : String(e) }); }
+    })();
+    return { stage: firstRun.stage };
   },
   // Which coding tools are set up to be told, for Home's "Connected tools".
   "GET /api/tools": async (db, q) => {
