@@ -47,3 +47,23 @@ describe("muninn status", () => {
     expect(out.at(-1)).toMatch(/^\d+ things need you\. Next: muninn setup$/);
   });
 });
+
+describe("errors in plain words", () => {
+  it("says another command is using the data, and what to run if it stays stuck", async () => {
+    useHome(); tty(false);
+    const { friendlyError } = await import("../src/term.js");
+    const out = await friendlyError(new Error("SQLITE_BUSY: database is locked"));
+    expect(out.split("\n")[0]).toBe("✗ Couldn't open secondnature's data.");
+    expect(out).toContain("Wait for it to finish");
+    expect(out).toContain("muninn status");
+  });
+});
+
+describe("muninn ask", () => {
+  it("gives agents the matches, not a written answer", async () => {
+    const { whoIsAsking } = await import("../src/store/queries.js");
+    expect(whoIsAsking({ CLAUDECODE: "1" }, true).tool).toBe("claude-code");
+    expect(whoIsAsking({}, false).tool).toBe("agent");
+    expect(whoIsAsking({}, true).tool).toBe("terminal");
+  });
+});

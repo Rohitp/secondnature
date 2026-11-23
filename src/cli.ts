@@ -8,14 +8,16 @@ import { ensureHome, home } from "./config.js";
 const [cmd, ...args] = process.argv.slice(2);
 const USAGE = `muninn: lessons that carry across coding sessions
 
-  muninn learn [--all-repos]    Find lessons in your logs and review them
+  muninn learn [--all-repos] [--verbose] [--review]
+                                Find lessons in your logs (--review: keep or skip them here)
   muninn review                 Review lessons that are waiting
   muninn add "text" [--always-on] [--trigger word] [--global]
   muninn list [--all] [--status proposed|live|rejected|retired]
   muninn show <id>
   muninn edit <id> [--text "..."] [--always-on|--not-always-on] [--trigger word] [--global|--repo-scope]
   muninn retire <id>
-  muninn ask "question"         Search kept lessons and notes in every repo
+  muninn ask "question"         An answer from your lessons, plans and past sessions (--more: a follow-up,
+                                --matches: just the matches, as agents get them)
   muninn links check            Rebuild links, and have your Claude check the ones muninn guessed
   muninn link|unlink "decision" "work"  Say a decision did (or didn't) lead to some finished work
   muninn related "what" [--all-repos]  What a decision or piece of work led to, and where it was done
@@ -176,7 +178,7 @@ async function main() {
     case "learn": {
       const auto = args.includes("--auto");
       const { learn } = await import("./commands/learn.js");
-      if (!auto) return learn({ allRepos: args.includes("--all-repos") });
+      if (!auto) return learn({ allRepos: args.includes("--all-repos"), verbose: args.includes("--verbose"), review: args.includes("--review") });
       const { takeLock, releaseLock, stamp, scanDue } = await import("./commands/auto.js");
       // --force is the page's "Check now": run even if a scan isn't due yet.
       if ((!args.includes("--force") && !scanDue()) || !takeLock()) return;
@@ -367,4 +369,4 @@ async function runHook(client: string, agEvent?: string) {
 main().then(async () => {
   if (!CHANGES.has(cmd ?? "") || process.exitCode) return;
   try { const [{ openDb }, { syncCursor }] = await Promise.all([import("./store/db.js"), import("./deliver/cursor.js")]); await syncCursor(await openDb()); } catch { /* Cursor files are a convenience */ }
-}).catch((e) => { console.error(e instanceof Error ? e.message : String(e)); process.exitCode = 1; });
+}).catch(async (e) => { console.error(await (await import("./term.js")).friendlyError(e)); process.exitCode = 1; });

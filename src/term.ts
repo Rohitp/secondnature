@@ -34,3 +34,22 @@ export const bar = (share: number, cells = 16) => { const f = Math.round(Math.ma
 export const version = () => { try { return String(JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf8")).version); } catch { return ""; } };
 export const clock = (d = new Date()) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** An error in plain words: what went wrong, why if known, and the one thing to do about it. */
+export async function friendlyError(e: unknown): Promise<string> {
+  const msg = e instanceof Error ? e.message : String(e);
+  if (/SQLITE_BUSY|database is locked/i.test(msg)) {
+    let who = "";
+    try {
+      const { scanRunning } = await import("./commands/auto.js");
+      const { statSync } = await import("node:fs"); const { home } = await import("./config.js");
+      if (scanRunning()) who = ` (muninn learn, started at ${clock(new Date(statSync(join(home(), "auto.lock")).mtimeMs))})`;
+    } catch { /* say it without the name */ }
+    return `${mark.fail()} ${c.bold("Couldn't open secondnature's data.")}
+  Another muninn command is using it right now${who}. Wait for it to finish,
+  then run this again.
+
+  ${c.dim("Still stuck after 10 minutes?")} ${c.cmd("muninn status")} ${c.dim("shows what's running.")}`;
+  }
+  return `${mark.fail()} ${c.bold(msg.split("\n")[0] ?? msg)}\n  ${c.dim("If it keeps happening,")} ${c.cmd("muninn status")} ${c.dim("checks every part.")}`;
+}

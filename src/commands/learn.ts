@@ -13,11 +13,50 @@ import { adoptRepo } from "../repo/adopt.js";
 import { review } from "./review.js";
 import { repoBlock, repoLabel, scanSummary, type RepoReport } from "./learn-summary.js";
 
-export async function learn(opts: { allRepos?: boolean; auto?: boolean; noReview?: boolean }): Promise<number> {
+/**
+ * Run by hand, learn says what it read, what it found, and where to review it; --verbose gives the old per-repo
+ * detail, --review keeps or skips the new ones right here. Automatic scans (auto) print nothing.
+ */
+export async function learn(opts: { allRepos?: boolean; auto?: boolean; noReview?: boolean; verbose?: boolean; review?: boolean }): Promise<number> {
   if (opts.auto && isPaused()) return 0;
-  const cfg = settings();
   const here = opts.allRepos ? null : repoIdentity(process.cwd());
-  if (!opts.allRepos && !here) { console.error("This folder is not in a git repo. Run it inside one, or use --all-repos."); process.exitCode = 1; return 0; }
+  if (!opts.allRepos && !here) { const t = await import("../term.js"); console.error(`${t.mark.fail()} This folder isn't in a git repo, and secondnature learns per repo.\n  ${t.next("muninn learn --all-repos", "reads every repo instead")}`); process.exitCode = 1; return 0; }
+  if (opts.auto || opts.verbose) return learnInner(opts, here);
+  // The short version: the detail below is quiet, and a summary is printed at the end.
+  const t = await import("../term.js");
+  const out = console.log;
+  const db0 = await openDb();
+  const since = String((await db0.execute("SELECT value FROM meta WHERE key='last_learn'")).rows[0]?.value ?? "");
+  const started = new Date().toISOString();
+  const pre = scanLogs();
+  const fresh = pre.sessions.filter((s) => (!here || s.cwd && repoIdentity(s.cwd) === here) && (s.events.at(-1)?.ts ?? "") > since);
+  const byTool = new Map<string, number>(); for (const s of fresh) byTool.set(s.tool, (byTool.get(s.tool) ?? 0) + 1);
+  const NAMES: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex", cursor: "Cursor", antigravity: "Antigravity" };
+  out(`Reading sessions${since ? ` since ${new Date(since).toDateString() === new Date().toDateString() ? t.clock(new Date(since)) : new Date(since).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` : ""}…  ${t.c.dim(fresh.length ? [...byTool].map(([k, n]) => `${n} in ${NAMES[k] ?? k}`).join(", ") : "nothing new")}`);
+  const notes: string[] = [];
+  console.log = (...a: unknown[]) => { const line = a.map(String).join(" "); if (/^(Couldn't (store|write)|.*: you've used )/.test(line)) notes.push(line); };
+  let waiting = 0;
+  try { waiting = await learnInner({ ...opts, review: false }, here, notes); }
+  finally { console.log = out; }
+  const db = await openDb();
+  const where = here ? "AND repo_id=?" : ""; const args = here ? [here] : [];
+  const made = (await db.execute({ sql: `SELECT coalesce(plain,text) t, sessions FROM lessons WHERE status='proposed' AND created_at>=? ${where} ORDER BY sessions DESC LIMIT 5`, args: [started, ...args] })).rows;
+  const madeN = Number((await db.execute({ sql: `SELECT count(*) n FROM lessons WHERE status='proposed' AND created_at>=? ${where}`, args: [started, ...args] })).rows[0]?.n ?? 0);
+  const again = since ? (await db.execute({ sql: `SELECT DISTINCT coalesce(l.plain,l.text) t FROM evidence e JOIN lessons l ON l.id=e.lesson_id WHERE l.status='live' AND e.seen_at>? AND e.seen_at>=coalesce(l.reviewed_at,l.created_at) ${here ? "AND l.repo_id=?" : ""} LIMIT 3`, args: [since, ...args] })).rows.map((r) => String(r.t)) : [];
+  const cut = (s: string, n = 50) => (s.length > n ? `${s.slice(0, s.lastIndexOf(" ", n - 1) > n / 2 ? s.lastIndexOf(" ", n - 1) : n - 1)}…` : s);
+  out("");
+  if (madeN) { out(`${t.mark.ok()} ${t.plural(madeN, "new lesson")} to review`); for (const r of made) out(t.c.dim(`    ${t.pad(cut(String(r.t).replace(/\s+/g, " ")), 52)}${Number(r.sessions) > 1 ? `in ${r.sessions} sessions` : ""}`)); }
+  else out(`${t.mark.ok()} No new lessons this time.`);
+  if (again.length) out(`${t.mark.need()} ${again.length === 1 ? "A kept lesson's problem came up again" : `${again.length} kept lessons' problems came up again`}: ${t.c.dim(again.map((x) => cut(x, 40)).join("; "))}`);
+  for (const n of notes) out(`${/^Couldn't/.test(n) ? t.mark.fail() : /may be out of date/.test(n) ? t.mark.need() : t.mark.ok()} ${n}`);
+  out("");
+  if (waiting) out(t.next("muninn ui", madeN ? "to keep or skip them" : `· ${waiting} wait for you`));
+  if (opts.review) await review(db, here);
+  return waiting;
+}
+
+async function learnInner(opts: { allRepos?: boolean; auto?: boolean; noReview?: boolean; verbose?: boolean; review?: boolean }, here: string | null, summaryNotes?: string[]): Promise<number> {
+  const cfg = settings();
 
   const scan = scanLogs();
   const { ignoredRepos } = await import("../store/ignore.js");
@@ -106,6 +145,7 @@ export async function learn(opts: { allRepos?: boolean; auto?: boolean; noReview
         const text = async (id: string) => { const t = String((await db.execute({ sql: "SELECT coalesce(plain,text) t FROM lessons WHERE id=?", args: [id] })).rows[0]?.t ?? id); return t.length > 70 ? `${t.slice(0, 69)}…` : t; };
         notes.push(`Two kept lessons come from the same quotes: "${await text(a)}" and "${await text(b)}". Switch one off in muninn ui, or run "muninn retire ${b.slice(0, 8)}".`);
       }
+      if (summaryNotes) summaryNotes.push(...notes.map((n) => (opts.allRepos ? `${repoLabel(repo)}: ${n}` : n)));
       for (const line of repoBlock({ repo, sessions: sessions.length, minSessions: cfg.minSessions, moments: Object.values(r.moments).reduce((a, b) => a + b, 0), known: r.known, newLessons: r.newLessons, noise: r.discarded, review, notes })) console.log(line);
     }
     for (const s of sessions) if (s.unknown) { await db.execute({ sql: "INSERT OR REPLACE INTO scan_counts (repo_id,tool,client_version,scanned_at,unknown_records) VALUES (?,?,?,?,?)", args: [repo, s.tool, s.clientVersion, new Date().toISOString(), s.unknown] }); }
@@ -123,7 +163,7 @@ export async function learn(opts: { allRepos?: boolean; auto?: boolean; noReview
     await st.indexPlan(db, embed);
     const all = repos.flatMap((r) => scan.byRepo.get(r)!);
     let shown = -1;
-    const r = await st.indexSessions(db, all, embed, { ignored, onProgress: opts.auto ? undefined : (done, total) => { const pct = Math.floor((done / total) * 10); if (process.stdout.isTTY && pct !== shown) { shown = pct; process.stdout.write(`\rStoring sessions for search: ${done}/${total}`); } } });
+    const r = await st.indexSessions(db, all, embed, { ignored, onProgress: opts.auto || !opts.verbose ? undefined : (done, total) => { const pct = Math.floor((done / total) * 10); if (process.stdout.isTTY && pct !== shown) { shown = pct; process.stdout.write(`\rStoring sessions for search: ${done}/${total}`); } } });
     if (!opts.auto && process.stdout.isTTY && shown >= 0) process.stdout.write("\r\x1b[K");
     if (!opts.auto && (r.added || archived)) console.log(`Stored ${r.added} exchange(s) from ${r.sessions} session(s) for "muninn recall"${archived ? `, and kept a compressed copy of ${archived} log(s)` : ""}.`);
   } catch (e) { if (!opts.auto) console.log(`Couldn't store sessions this time: ${e instanceof Error ? e.message : String(e)}`); }
@@ -183,7 +223,7 @@ export async function learn(opts: { allRepos?: boolean; auto?: boolean; noReview
   if (!opts.auto) {
     const unknown = scan.sessions.reduce((n, s) => n + s.unknown, 0);
     if (unknown) console.log(`${unknown} log record(s) had a structure muninn doesn't recognise, so a format may have changed.`);
-    if (!opts.noReview) await review(db, here);
+    if (opts.review && !opts.noReview) await review(db, here);
   }
   const waiting = await db.execute({ sql: `SELECT count(*) n FROM lessons WHERE status='proposed' ${here ? "AND repo_id=?" : ""}`, args: here ? [here] : [] });
   return Number(waiting.rows[0]?.n ?? 0);
