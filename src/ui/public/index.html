@@ -428,6 +428,35 @@ pre code { background: none; padding: 0; }
 .hodl dt { color: var(--muted); } .hodl dd { margin: 0; color: var(--body); overflow-wrap: anywhere; }
 .card .hist { border-top: 0; }
 @media (max-width: 600px) { .hodl { grid-template-columns: 1fr; } .hodl dd { margin-bottom: 6px; } }
+/* First run: a plain header, a stepper, and one step at a time in a narrow column. */
+body.firstrun .side { display: none; }
+body.firstrun .shell { grid-template-columns: 1fr; }
+body.firstrun main { padding: 0; }
+.frbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 32px; background: var(--group); border-bottom: 1px solid var(--line); }
+.welcome { max-width: 920px; margin: 0 auto; padding: 32px 24px 56px; display: flex; flex-direction: column; gap: 20px; }
+.stepper { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.stepper li { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 14px 0 6px; border-radius: 18px; font-size: 13px; font-weight: 600; background: var(--group); color: var(--muted); border: 1px solid var(--line); }
+.stepper li > span { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; background: var(--fill); }
+.stepper li.on { background: var(--ink); color: var(--group); border-color: var(--ink); } .stepper li.on > span { background: var(--group); color: var(--ink); }
+.stepper li.done { background: var(--chip); color: var(--chip-ink); border-color: transparent; } .stepper li.done > span { background: var(--link); color: #fff; }
+.frhead { display: flex; flex-direction: column; gap: 6px; } .frhead h1 { font-size: 30px; line-height: 1.2; } .frhead p { margin: 0; font-size: 16px; color: var(--body); }
+.frtool, .frprog { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-bottom: 1px solid var(--line-soft); }
+.frtool:last-child, .frprog:last-child { border-bottom: 0; }
+.grow { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.frbox { flex: none; width: 20px; height: 20px; border-radius: 5px; display: grid; place-items: center; font-size: 12px; font-weight: 700; border: 1.5px solid var(--line-strong); color: transparent; }
+.frbox.on { background: var(--link); border-color: var(--link); color: #fff; }
+.frhow { font-size: 13px; color: var(--body); text-align: right; max-width: 280px; }
+.frcards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 12px; }
+.h3 { margin: 0; font-size: 14px; font-weight: 600; } .frcards p { font-size: 13px; }
+.fract { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.btnlink.big { min-height: 48px; padding: 0 22px; font-size: 15px; } .btnlink:disabled { opacity: .45; cursor: default; }
+.frmark { flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--fill); font-size: 12px; font-weight: 700; }
+.frprog.done .frmark { background: var(--on-bg); color: var(--on); }
+.warnbox { border-color: var(--warn-line); background: var(--warn-bg); } .warnbox strong, .warnbox p { color: var(--warn); }
+.infobox { border-color: var(--line-strong); background: var(--chip); gap: 4px; }
+.frlesson { gap: 8px; } .frtext { font-size: 17px; font-weight: 600; color: var(--ink) !important; overflow-wrap: anywhere; }
+.frkept { color: var(--on); }
+@media (max-width: 600px) { .frtool { flex-wrap: wrap; } .frhow { text-align: left; max-width: none; flex-basis: 100%; padding-left: 34px; } .frhead h1 { font-size: 24px; } }
 </style>
 </head>
 <body>
@@ -1175,7 +1204,9 @@ function draw() {
 /* How many things wait for a yes or no in this repo: suggestions, proposed file changes, out-of-date CLAUDE.md lines. */
 const waitingCount = () => data.suggested.length + (data.proposals?.waiting?.length || 0) + (data.memory || []).filter((m) => m.status === "open").length;
 /* The tab open now: the one picked, else Home. */
-const currentTab = () => (tab === "review" ? "lessons" : tab || "home");
+/* Until secondnature has read your sessions once and found nothing, first run opens instead of Home. */
+const firstTime = () => !data.scan.lastLearn && !data.suggested.length && !data.kept.length && !data.tools.find((t) => t.id === "claude-code")?.on;
+const currentTab = () => (tab === "review" ? "lessons" : tab || (firstTime() ? "welcome" : "home"));
 /* Line icons for the sidebar, drawn with the text colour. */
 const svg = (d, size = 18) => `<svg aria-hidden="true" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
 const ICON = {
@@ -1213,9 +1244,68 @@ function drawSide() {
 function drawPage() {
   drawSide();
   const t = currentTab();
-  const body = t === "home" ? homeView() : t === "impact" ? impactView() : t === "lessons" ? lessonsView() : t === "plan" ? (repo && data.plan ? planSection() : lessonsView())
+  document.body.classList.toggle("firstrun", t === "welcome");
+  const body = t === "welcome" ? welcomeView() : t === "home" ? homeView() : t === "impact" ? impactView() : t === "lessons" ? lessonsView() : t === "plan" ? (repo && data.plan ? planSection() : lessonsView())
     : t === "activity" ? (runPage ? runPageView() : activityView()) : settingsView();
-  $("#main").innerHTML = `<div class="grid">${body}</div>`;
+  $("#main").innerHTML = t === "welcome" ? `<header class="frbar"><div class="brand" style="margin:0"><span class="mark">${MARK}</span><span class="wordmark">secondnature</span></div><span class="sub" style="font-size:13px">Set up · takes a few minutes</span></header>${body}` : `<div class="grid">${body}</div>`;
+}
+/* First run: connect your tools, read your sessions, then keep the first few lessons. Opens by itself until
+   secondnature has read your sessions once; also at ?tab=welcome. The sidebar is hidden while it's open. */
+let fr = null, frStep = null, frPoll = null; const frDec = {};
+async function loadFirstRun() {
+  fr = await api("/api/firstrun");
+  if (frStep === null) frStep = ["connecting", "model", "reading"].includes(fr.stage) ? 2 : fr.stage === "done" ? 3 : 1;
+  if (frStep === 3 && !fr.top) fr.top = (await api("/api/lessons?" + q({ status: "proposed" })).catch(() => [])).sort((a, b) => (b.sessions || 0) - (a.sessions || 0)).slice(0, 3);
+  // Follow the setup while it runs.
+  const busy = ["connecting", "model", "reading"].includes(fr.stage);
+  if (busy && !frPoll) frPoll = setInterval(() => loadFirstRun().then(() => { if (currentTab() === "welcome") draw(); }).catch(() => {}), 2500);
+  if (!busy && frPoll) { clearInterval(frPoll); frPoll = null; }
+}
+const FR_STEPS = ["Connect", "Read", "Keep"];
+function welcomeView() {
+  if (!fr) { loadFirstRun().then(draw).catch((e) => toast(e.message)); return `<div class="s12"><span class="spin" aria-hidden="true" style="display:inline-block"></span></div>`; }
+  const stepper = `<ol class="stepper" aria-label="Steps">${FR_STEPS.map((l, i) => { const n = i + 1; const st = n === frStep ? "on" : n < frStep ? "done" : ""; return `<li class="${st}" ${st === "on" ? 'aria-current="step"' : ""}><span aria-hidden="true">${n < frStep ? "✓" : n}</span>${l}</li>`; }).join("")}</ol>`;
+  const logs = fr.tools.reduce((a, t) => a + t.logs, 0); const used = fr.tools.filter((t) => t.logs).length;
+  let body = "";
+  if (frStep === 1) {
+    const ready = fr.hooked && fr.model && fr.lastLearn;
+    body = `<div class="frhead"><h1>Teach your agents once</h1><p>secondnature reads your past sessions, finds what you keep telling your agents, and tells them for you next time. You approve every lesson first.</p></div>
+      <section class="card" aria-labelledby="foundh"><div class="cardhead"><div><h2 id="foundh">Found on this Mac</h2><div class="sub">${fr.repos} repo${fr.repos === 1 ? "" : "s"} with sessions in these tools.</div></div></div>
+        <ul class="plainlist">${fr.tools.map((t) => `<li class="frtool"><span class="frbox${t.logs ? " on" : ""}" aria-hidden="true">${t.logs ? "✓" : ""}</span><span class="grow"><strong>${esc(t.name)}</strong><span class="sub" style="font-size:13px">${t.logs ? `${t.logs} session${t.logs === 1 ? "" : "s"}` : "Installed, no sessions yet"}</span></span><span class="frhow">${esc(t.how)}</span></li>`).join("")}</ul></section>
+      <div class="frcards">
+        <div class="card pad"><h3 class="h3">What it reads</h3><p>The session logs these tools keep on this Mac. Never your code, unless a session quoted it.</p></div>
+        <div class="card pad"><h3 class="h3">What it sends</h3><p>Redacted excerpts, to your own Claude Code, to write each lesson. secondnature has no server of its own.</p></div>
+        <div class="card pad"><h3 class="h3">What it changes</h3><p>Adds hooks, its MCP server and rules files so agents can be told. <code>muninn uninstall</code> takes the hooks out.</p></div>
+      </div>
+      ${fr.writer ? "" : `<div class="card pad warnbox"><strong>secondnature couldn't find the claude command.</strong><p>It uses your own Claude Code to write lessons. Without it, only instructions you repeated word for word can become lessons. Install Claude Code's command line tool, check <code>claude --version</code> works in a new terminal, then come back.</p></div>`}
+      ${fr.stage === "error" ? `<div class="card pad warnbox"><strong>Setup stopped.</strong><p>${esc(fr.error)}</p></div>` : ""}
+      <div class="fract"><button class="btnlink big" data-fr-start>${fr.stage === "error" ? "Try again" : ready ? "Read my sessions again" : "Connect and read my sessions"}</button>
+        ${ready ? `<button class="btn2 big" data-fr-go="3">See what you've been teaching</button>` : ""}
+        ${fr.model ? "" : `<span class="sub" style="font-size:13px">Downloads a 33 MB model once, to compare text on this Mac.</span>`}</div>`;
+  } else if (frStep === 2) {
+    const S = fr.stage; const order = ["connecting", "model", "reading", "done"]; const at = order.indexOf(S);
+    const row = (name, idx, note) => { const st = S === "error" ? "" : at > idx ? "done" : at === idx ? "doing" : ""; return `<li class="frprog ${st}"><span class="frmark" aria-hidden="true">${st === "done" ? "✓" : st === "doing" ? '<span class="spin"></span>' : ""}</span><span class="grow"><strong>${name}</strong></span><span class="sub" style="font-size:13px">${st === "done" ? "Done" : st === "doing" ? note : "Waiting"}</span></li>`; };
+    body = `<div class="frhead"><h1>${S === "done" ? "Read your sessions" : "Reading your sessions"}</h1><p>This runs on this Mac. You can close the page; it carries on, and new lessons show in Lessons when it's done.</p></div>
+      <section class="card" aria-label="Progress"><ul class="plainlist">
+        ${row("Connect your coding tools", 0, "Adding hooks and the MCP server")}
+        ${row("Model for comparing text", 1, fr.model ? "Loading" : "Downloading 33 MB")}
+        ${row(`Read ${logs} session${logs === 1 ? "" : "s"} in ${fr.repos} repo${fr.repos === 1 ? "" : "s"}`, 2, "Your Claude is writing lessons. This takes a few minutes")}
+      </ul></section>
+      ${S === "error" ? `<div class="card pad warnbox"><strong>Setup stopped.</strong><p>${esc(fr.error)}</p><button class="btn2" data-fr-start style="align-self:flex-start">Try again</button></div>` : ""}
+      <div class="card pad infobox"><strong>Found so far</strong><p>${fr.found ? `${fr.found} lesson${fr.found === 1 ? "" : "s"} to review, in ${fr.foundRepos} repo${fr.foundRepos === 1 ? "" : "s"}.` : "Nothing yet. Lessons appear as each repo finishes."}</p></div>
+      <div class="fract"><button class="btnlink big" data-fr-go="3" ${S === "done" ? "" : "disabled"}>See what you've been teaching</button></div>`;
+  } else {
+    const top = fr.top || []; const kept = Object.values(frDec).filter((v) => v === "k").length; const rest = Math.max(0, fr.found - top.length);
+    body = `<div class="frhead"><h1>${fr.found ? `Across ${logs} sessions in ${used} tool${used === 1 ? "" : "s"}, secondnature found ${fr.found} thing${fr.found === 1 ? "" : "s"} to keep` : "Nothing to keep yet"}</h1>
+        <p>${fr.found ? `Here ${top.length === 1 ? "is the one" : `are the ${top.length}`} that came up most. Keep the ones you want agents told.${rest ? ` The other ${rest} wait in Lessons.` : ""}` : "secondnature didn't find anything you keep telling your agents yet. It reads new sessions on its own after they end, and suggestions show in Lessons."}</p></div>
+      ${top.map((l) => { const d = frDec[l.id]; const w = l.defaults?.route === "always" ? "Told at the start of every session" : l.defaults?.route === "keyword" ? `Told when "${l.defaults.keywords.join('", "')}" comes up` : "Found when an agent searches"; return `<article class="card pad frlesson">
+        <p class="frtext">${esc(l.plain || l.text)}</p>
+        <p>${esc(l.why || l.origin)}</p><span class="sub" style="font-size:13px">${esc(w)}${l.defaults?.global ? ", in every repo" : l.repo_id ? `, in ${esc(short(l.repo_id))}` : ""}.</span>
+        <div class="fract">${d ? `<span role="status" class="${d === "k" ? "frkept" : "sub"}" style="font-weight:600">${d === "k" ? "Kept. Agents are told it from their next session." : "Not kept."}</span>`
+          : `<button class="btnlink" data-fr-keep="${esc(l.id)}">Keep</button><button class="btn2 big" data-fr-skip="${esc(l.id)}">Don't keep</button>`}</div></article>`; }).join("")}
+      <div class="fract"><button class="btnlink big" data-fr-home>Go to Home</button><span class="sub" style="font-size:13px">${kept ? `You kept ${kept}. ` : ""}${rest ? `${rest} more wait in Lessons, whenever you have a minute.` : ""}</span></div>`;
+  }
+  return `<div class="welcome">${stepper}${body}</div>`;
 }
 /* Home: what needs you, what agents were told today and why, where you left off, the week, and connected tools. */
 let homeMore = false;
@@ -1644,7 +1734,7 @@ function askedSection() {
 /* Settings: this repo's delivery and files, and this Mac's background checks. */
 function settingsView() {
   const dial = data.home.dial;
-  return `<div class="pagehead"><div><h1>Settings</h1><p class="lead">How lessons reach your agents${repo ? ` in ${esc(short(repo))}` : ""}, and what secondnature does on this Mac.</p></div></div>
+  return `<div class="pagehead"><div><h1>Settings</h1><p class="lead">How lessons reach your agents${repo ? ` in ${esc(short(repo))}` : ""}, and what secondnature does on this Mac. <button class="linkbtn" data-tab="welcome">Open first-run setup</button></p></div></div>
     <div class="stack s8">
     ${repo ? `<section aria-labelledby="st">
       <h2 id="st">${esc(short(repo))}</h2>
@@ -1719,6 +1809,14 @@ document.addEventListener("click", async (e) => {
   const li = el.closest("li[data-id]");
   try {
     if (el.dataset.open) { open = open === el.dataset.open ? null : el.dataset.open; draw(); return; }
+    if (el.dataset.frStart !== undefined) { el.disabled = true; await api("/api/firstrun", {}); frStep = 2; await loadFirstRun(); draw(); window.scrollTo(0, 0); return; }
+    if (el.dataset.frGo) { frStep = Number(el.dataset.frGo); fr = null; draw(); window.scrollTo(0, 0); return; }
+    if (el.dataset.frKeep || el.dataset.frSkip) {
+      const id = el.dataset.frKeep || el.dataset.frSkip; const l = fr.top.find((x) => x.id === id); el.disabled = true;
+      await api("/api/decide", el.dataset.frKeep ? { id, action: "keep", route: l.defaults.route, keywords: l.defaults.keywords.join(", "), global: l.defaults.global } : { id, action: "reject" });
+      frDec[id] = el.dataset.frKeep ? "k" : "s"; draw(); return;
+    }
+    if (el.dataset.frHome !== undefined) { tab = "home"; rememberPick(); await refresh(); window.scrollTo(0, 0); return; }
     if (el.dataset.impactFilter) { impactFilter = el.dataset.impactFilter; draw(); return; }
     if (el.dataset.proofPage !== undefined) {
       el.disabled = true; el.textContent = "Writing the page…";
