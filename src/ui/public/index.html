@@ -496,6 +496,8 @@ main.enter .grid > *:nth-child(2) { animation-delay: .03s; } main.enter .grid > 
 button, a, input, select, textarea { transition: background-color .14s ease, color .14s ease, border-color .14s ease, box-shadow .14s ease; }
 :root { transition: background-color .25s ease; }
 @media (prefers-reduced-motion: reduce) { main.enter .grid > * { animation: none; } button, a, input, select, textarea, :root { transition: none; } }
+.wordedby { align-self: flex-start; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 9px; background: var(--chip); color: var(--chip-ink); }
+.state.warn { background: var(--warn-bg); color: var(--warn); }
 </style>
 <script>try { const t = localStorage.getItem("theme"); if (t) document.documentElement.dataset.theme = t; } catch { /* the OS decides */ }</script>
 </head>
@@ -1218,6 +1220,8 @@ const KIND_SHORT = {
   one_by_one: "Done one at a time", skimmed: "Skimmed a long output", big_output: "Very long output", big_file: "Read a very large file",
 };
 const kindOf = (l) => KIND_SHORT[l.signal] || (l.kind === "note" ? "Note" : "Lesson");
+/** Whose words a lesson is in: yours if you edited or stated it, else your Claude's. */
+const wordedBy = (l) => (l.edited_by_person ? "Edited by you" : l.signal === "stated" ? "Your words, as you said them" : /run|workflow|swarm/i.test(l.source || "") ? "Worded by your Claude from a run" : "Worded by your Claude from your sessions");
 /** Who said the evidence: you, or an agent. */
 const whoSaid = (l, quote) => (quote.startsWith("$ ") ? "Ran" : ["repeat", "correction", "explained", "confused", "friction", "stated", "steered", "stopped"].includes(l.signal) ? "You" : l.signal === "unanswered" ? "Agent asked" : "Agent");
 /** The edit form for one lesson: its words, when it's told, where and to whom. Shown in the detail pane after Edit. */
@@ -1391,7 +1395,9 @@ function homeView() {
   const h = data.home; const n = waitingCount(); const s = data.suggested.length;
   const props = data.proposals?.waiting?.length || 0; const lines = (data.memory || []).filter((m) => m.status === "open").length;
   const others = repo ? data.repos.filter((r) => r.id !== repo && r.waiting) : [];
+  const gone = data.tools.filter((t) => t.missing);
   const more = [
+    ...gone.map((t) => ({ title: `A kept lesson isn’t reaching ${t.name}`, note: `${t.name}’s rules file in ${short(repo)} was deleted, so its agents aren’t told what you kept.`, cta: "Put the file back", attr: `data-rules-back="${esc(t.id)}"` })),
     ...(props ? [{ title: `${props} proposed edit${props === 1 ? "" : "s"} to CLAUDE.md or skills`, note: "Your Claude checked this repo's instruction files against your sessions.", cta: "Review", attr: 'data-tab="lessons" data-ltab="changes"' }] : []),
     ...(lines ? [{ title: `${lines} line${lines === 1 ? "" : "s"} in CLAUDE.md may be out of date`, note: "They name files or commands that aren't in the repo any more.", cta: "Review", attr: 'data-tab="lessons" data-ltab="changes"' }] : []),
     ...h.cameBack.slice(0, 3).map((c) => ({ title: "A problem came back", note: `“${c.text}”: it happened again after you kept the lesson.`, cta: "See the lesson", attr: `data-tab="lessons" data-ltab="kept" data-sel="${esc(c.id)}"` })),
@@ -1407,7 +1413,7 @@ function homeView() {
   const shown = head && !s && head.cta ? more.slice(props || lines ? 1 : 0) : more;
   const needs = `<section class="card needs" aria-label="Needs you">
       <div class="top"><div class="what"><span class="num${head ? "" : " ok"}" aria-hidden="true">${head ? head.num : "✓"}</span>
-        <div><strong>${head ? head.title : "Nothing needs you"}</strong><span>${head ? head.sub : "New lessons show here as secondnature reads your sessions."}</span></div></div>
+        <div><strong>${head ? head.title : "Nothing needs you"}</strong><span>${head ? head.sub : "No new lessons, and every tool is getting what you kept. secondnature looks again after your next session."}</span></div></div>
         ${head?.cta ? `<button class="btnlink" data-tab="lessons" data-ltab="${s ? "review" : "changes"}">${head.cta}</button>` : ""}</div>
       ${listOpen ? `<ul class="morelist">${shown.map((m) => `<li><div><strong>${esc(m.title)}</strong><span>${esc(m.note)}</span></div><button class="btn2" ${m.attr}>${esc(m.cta)}</button></li>`).join("")}</ul>`
       : shown.length ? `<button class="moretoggle" aria-expanded="${homeMore}" data-home-more><span class="dot" aria-hidden="true"></span>${homeMore ? "Hide" : `${shown.length} more thing${shown.length === 1 ? "" : "s"} need${shown.length === 1 ? "s" : ""} you`}</button>
@@ -1423,20 +1429,20 @@ function homeView() {
       <div class="fb" role="group" aria-label="Was this useful?"><button class="pill good" aria-pressed="${v === "helped"}" data-fb="helped" data-fb-key="${esc(key)}">Helped</button><button class="pill bad" aria-pressed="${v === "wrong"}" data-fb="wrong" data-fb-key="${esc(key)}">Wrong</button></div></li>`;
   }).join("");
   const toldCard = `<section class="card" aria-labelledby="toldh">
-      <div class="cardhead"><div><h2 id="toldh">Told your agents today · ${told.length}</h2><div class="sub">Each one says why it was told. Mark it if it helped or was wrong.</div></div>
+      <div class="cardhead"><div><h2 id="toldh">Told your agents today · ${told.length}</h2><div class="sub">Each one says why. Mark it if it helped or was wrong.</div></div>
         ${repo ? `<label class="speak">Speaks up <select id="speak">${["quiet", "start", "anytime"].map((d) => `<option value="${d}" ${h.dial === d ? "selected" : ""}>${{ quiet: "only when asked", start: "at session start", anytime: "whenever relevant" }[d]}</option>`).join("")}</select></label>` : ""}</div>
       <p class="speakline">${SPEAK[h.dial] || ""}</p>
-      ${told.length ? `<ul class="toldlist">${toldRows}</ul>` : `<p class="empty" style="margin:0">Nothing told in the last day${repo ? ` in ${esc(short(repo))}` : ""}. Lessons you keep are told when a session starts or a word you chose comes up.</p>`}
+      ${told.length ? `<ul class="toldlist">${toldRows}</ul>` : `<p class="empty" style="margin:0">Nothing told yet today${repo ? ` in ${esc(short(repo))}` : ""}. ${data.kept.length ? "The first session you start will get your every-session lessons." : "Agents are told the lessons you keep, so keep one first."}</p>`}
     </section>`;
 
   const ho = data.handoffs[0]; const hp = ho ? handoffParts(ho.text) : null;
   const left = `<section class="card pad" aria-labelledby="lefth">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px"><h2 id="lefth">Where you left off</h2>${ho?.branch ? `<span class="branchchip">${esc(ho.branch)}</span>` : ""}</div>
-      ${ho ? `<span class="sub">From your last session${!repo && ho.repo_id ? ` in ${esc(short(ho.repo_id))}` : ""}, in ${esc(TOOL_NAMES[ho.tool] || ho.tool)}, ${esc(ago(ho.created_at))}</span>
+      ${ho ? `<span class="sub">Written by your Claude when your last session${!repo && ho.repo_id ? ` in ${esc(short(ho.repo_id))}` : ""} ended, in ${esc(TOOL_NAMES[ho.tool] || ho.tool)}, ${esc(ago(ho.created_at))}</span>
         ${hp.Goal ? `<p style="color:var(--ink)"><strong>Goal:</strong> ${esc(hp.Goal)}</p>` : ""}
         ${hp.Done ? `<p>${esc(clip(hp.Done, 260))}</p>` : ""}
         ${hp.Next ? `<p><strong style="color:var(--ink)">Next:</strong> ${esc(clip(hp.Next, 260))}</p>` : ""}
-        ${repo ? `<button class="cardlink" data-tab="plan">Open the plan →</button>` : ""}`
+        ${repo ? `<button class="cardlink" data-tab="plan" ${ho.branch ? `data-plan-branch="${esc(ho.branch)}"` : ""}>Open the plan${ho.branch ? ` for ${esc(ho.branch)}` : ""} →</button>` : ""}`
       : `<p>No session has ended with a summary yet${repo ? ` in ${esc(short(repo))}` : ""}. When one does, the next session is told where it left off, and it shows here.</p>`}
     </section>`;
 
@@ -1445,14 +1451,15 @@ function homeView() {
     w.mostTold ? `Told most: “${w.mostTold.label}”, in ${w.mostTold.sessions} session${w.mostTold.sessions === 1 ? "" : "s"}.` : "",
     w.problems.kept ? (w.problems.cameBack ? `${w.problems.cameBack} of the ${w.problems.kept} problems you kept a lesson for came back.` : `None of the ${w.problems.kept} problem${w.problems.kept === 1 ? "" : "s"} you kept a lesson for came back.`) : "",
     w.handoffs ? `Where you left off was passed on ${w.handoffs} time${w.handoffs === 1 ? "" : "s"}.` : "",
-    w.costUsd != null ? `secondnature's calls to your Claude cost about $${w.costUsd.toFixed(2)}.` : "",
+    w.costUsd != null ? `secondnature's calls to your Claude cost about $${w.costUsd.toFixed(2)} at list price.` : "",
   ].filter(Boolean);
   const week = `<section class="card pad" aria-labelledby="weekh"><h2 id="weekh">This week</h2>${weekLines.map((l) => `<p>${esc(l)}</p>`).join("")}
       <button class="cardlink" data-tab="impact">See if it's helping →</button></section>`;
 
   const tools = data.tools.length ? `<section class="card pad" aria-labelledby="toolsh" style="gap:4px"><h2 id="toolsh" style="margin-bottom:4px">Connected tools</h2>
-      ${data.tools.map((c) => `<div class="toolrow"><span>${esc(c.name)}</span><span class="state${c.on ? " good" : ""}">${esc(c.state)}</span></div>`).join("")}
-      ${repo ? "" : `<span class="sub" style="margin-top:6px">Pick a repo to see Cursor and Antigravity.</span>`}</section>` : "";
+      ${data.tools.map((c) => `<div class="toolrow"><span>${esc(c.name)}</span><span class="state${c.on ? " good" : c.missing ? " warn" : ""}">${c.on ? "✓ " : c.missing ? "! " : ""}${esc(c.state)}</span></div>`).join("")}
+      ${repo ? "" : `<span class="sub" style="margin-top:6px">Pick a repo to see Cursor and Antigravity.</span>`}
+      <button class="cardlink" data-tab="settings">Manage in Settings →</button></section>` : "";
 
   return `<header class="homehead"><div><h1>Home</h1><p class="lead">What needs you, and what secondnature told your agents today${repo ? ` in ${esc(short(repo))}` : ""}.</p></div>
       ${askBox()}</header>
@@ -1511,6 +1518,7 @@ function lessonPane(l, tabKey) {
       <div style="display:flex;flex-direction:column;gap:8px">
         <span class="sub">${esc(kindOf(l))}${kept ? "" : ` · ${esc(l.origin)}`}</span>
         <p class="ltitle">${esc(l.plain || l.text)}</p>
+        ${editing ? "" : `<span class="wordedby">${esc(wordedBy(l))}</span>`}
         ${l.plain && l.plain !== l.text ? `<p class="sub" style="font-size:13px">Agents are told: ${esc(l.text)}</p>` : ""}
         ${l.why ? `<p><strong style="color:var(--ink)">Why:</strong> ${esc(l.why)}</p>` : l.worth ? `<p>${esc(l.worth)}</p>` : ""}
       </div>
@@ -1556,7 +1564,7 @@ const askBox = () => `<form class="asksearch" data-home-ask role="search">${svg(
   <input id="homeq" name="q" type="search" autocomplete="off" placeholder="Ask about your work, e.g. how did we fix the webhook?"><span class="kbd" aria-hidden="true">⌘K</span></form>`;
 /* Is it helping?: whether problems you kept a lesson for stopped, by day and lesson by lesson, and what output trims saved.
    Read from the logs, so it loads when you open it rather than with the rest of the page. */
-let impact = null, impactFor = null, impactLoading = false, impactFilter = "all";
+let impact = null, impactFor = null, impactLoading = false, impactFilter = "all", proofSaved = "";
 async function loadImpact() {
   if (impactLoading || impactFor === repo) return;
   impactLoading = true;
@@ -1567,7 +1575,7 @@ async function loadImpact() {
 const OUTCOME_WORD = { worked: ["Helping", "good"], came_back: ["Still happening", "warn"], too_early: ["Too early to tell", ""] };
 function impactView() {
   const head = `<header class="homehead"><div><h1>Is it helping?</h1><p class="lead">Whether the problems you kept a lesson for stopped, and what shorter output saved.</p></div>
-      <button class="btn2 big" data-proof-page>Make a page to send someone</button></header>`;
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px"><button class="btn2 big" data-proof-page>Make a page to send someone</button>${proofSaved ? `<span role="status" class="sub" style="font-size:13px;max-width:44ch;text-align:right">${esc(proofSaved)}</span>` : ""}</div></header>`;
   if (impactFor !== repo) { loadImpact(); return head + `<div class="s12 card pad"><p><span class="spin" aria-hidden="true" style="display:inline-block;vertical-align:-2px"></span> Reading your sessions to see what came back…</p></div>`; }
   if (impact.error) return head + `<div class="s12 card pad"><p>Couldn't read this: ${esc(impact.error)}</p></div>`;
   const m = impact; const c = m.counts; const n = m.lessons.length;
@@ -1860,6 +1868,8 @@ document.addEventListener("click", async (e) => {
   const el = e.target.closest("button"); if (!el) return;
   const li = el.closest("li[data-id]");
   try {
+    if (el.dataset.rulesBack) { el.disabled = true; await api("/api/rules", { repo, tool: el.dataset.rulesBack, on: true }); toast("Put back. Its agents are told your lessons again from their next chat."); await refresh(); return; }
+    if (el.dataset.planBranch && el.dataset.tab === "plan" && el.dataset.planBranch !== data.plan?.branch) { planBranch = el.dataset.planBranch; tab = "plan"; runPage = null; rememberPick(); await refresh(); window.scrollTo(0, 0); return; }
     if (el.dataset.themePick) { document.documentElement.dataset.theme = el.dataset.themePick; try { localStorage.setItem("theme", el.dataset.themePick); } catch { /* kept until reload */ } drawSide(); return; }
     if (el.dataset.open) { open = open === el.dataset.open ? null : el.dataset.open; draw(); return; }
     if (el.dataset.frStart !== undefined) { el.disabled = true; await api("/api/firstrun", {}); frStep = 2; await loadFirstRun(); draw(); window.scrollTo(0, 0); return; }
@@ -1873,7 +1883,7 @@ document.addEventListener("click", async (e) => {
     if (el.dataset.impactFilter) { impactFilter = el.dataset.impactFilter; draw(); return; }
     if (el.dataset.proofPage !== undefined) {
       el.disabled = true; el.textContent = "Writing the page…";
-      try { const r = await api("/api/proof-page", { repo }); toast(`Wrote ${r.file.split("/").slice(-2).join("/")}. It has no scripts or outside files, so you can send it as is.`); }
+      try { const r = await api("/api/proof-page", { repo }); const parts = r.file.split("/"); proofSaved = `Saved as ${parts.pop()} in ${parts.pop()}. It has counts and lesson text, no session quotes.`; }
       finally { draw(); }
       return;
     }

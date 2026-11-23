@@ -1,6 +1,9 @@
 import type { Client } from "@libsql/client";
 import type { Session } from "../logs/types.js";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { leftAlone } from "../config.js";
+import { repoRoot } from "./local-file.js";
 
 /**
  * Cursor and Antigravity have no hooks, so their agents only hear lessons through rules files in the repo.
@@ -46,6 +49,14 @@ export async function rulesState(db: Client, repo: string): Promise<Record<Rules
     out[tool] = { on, auto: on ? await getMeta(db, autoKey(tool, repo)) : null };
   }
   return out;
+}
+
+/** On for a repo, but its main rules file is gone from the repo's folder (deleted by hand, or by git clean). */
+export async function rulesMissing(db: Client, repo: string, tool: RulesTool): Promise<boolean> {
+  if (!(await (await mod(tool)).enabled(db)).includes(repo)) return false;
+  const root = await repoRoot(db, repo);
+  if (!root || !existsSync(root)) return false;
+  return !existsSync(tool === "cursor" ? join(root, ".cursor", "rules", "muninn.mdc") : join(root, ".agents", "rules", "muninn.md"));
 }
 
 /** You turning rules on or off. Off is remembered, so a later session doesn't turn them back on. */

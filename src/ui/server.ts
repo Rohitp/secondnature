@@ -277,7 +277,10 @@ const routes: Record<string, Handler> = {
     const { home } = await import("../config.js");
     const { mkdirSync, writeFileSync } = await import("node:fs");
     const proof = await proofData(db, repo, (await import("../logs/discover.js")).scanLogs().sessions);
-    const file = join(home(), "reports", `${(repo ?? "all-repos").split("/").pop()}-${proof.at.slice(0, 10)}.html`);
+    // In Downloads, where a page to send someone is easy to find; muninn's own folder if there's no Downloads.
+    const { homedir } = await import("node:os"); const { existsSync } = await import("node:fs");
+    const dl = join(homedir(), "Downloads");
+    const file = join(existsSync(dl) ? dl : join(home(), "reports"), `secondnature-report-${repo ? `${repo.split("/").pop()}-` : ""}${proof.at.slice(0, 10)}.html`);
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, proofHtml(proof));
     if (process.platform === "darwin") spawn("open", ["-R", file], { stdio: "ignore", detached: true }).unref();
@@ -327,12 +330,15 @@ const routes: Record<string, Handler> = {
     const { installed, codexPresent } = await import("../commands/install.js");
     const repo = q.get("repo");
     const rules = repo ? await (await import("../deliver/auto-rules.js")).rulesState(db, repo).catch(() => null) : null;
-    const out: { id: string; name: string; on: boolean; state: string }[] = [];
+    const out: { id: string; name: string; on: boolean; state: string; missing?: boolean }[] = [];
     const cc = installed("claude-code").length > 0;
     out.push({ id: "claude-code", name: "Claude Code", on: cc, state: cc ? "Told by hooks" : "Not set up. Run muninn setup" });
-    if (rules) {
-      out.push({ id: "cursor", name: "Cursor", on: rules.cursor.on, state: rules.cursor.on ? "Told by rules files" : "Off in this repo" });
-      out.push({ id: "antigravity", name: "Antigravity", on: rules.antigravity.on, state: rules.antigravity.on ? "Told by rules and hooks" : "Off in this repo" });
+    if (rules && repo) {
+      const { rulesMissing } = await import("../deliver/auto-rules.js");
+      for (const [id, name, how] of [["cursor", "Cursor", "Told by rules files"], ["antigravity", "Antigravity", "Told by rules and hooks"]] as const) {
+        const missing = rules[id].on && (await rulesMissing(db, repo, id).catch(() => false));
+        out.push({ id, name, on: rules[id].on && !missing, missing, state: missing ? "Rules file missing" : rules[id].on ? how : "Off in this repo" });
+      }
     }
     if (codexPresent()) { const on = installed("codex").length > 0; out.push({ id: "codex", name: "Codex", on, state: on ? "Told by hooks" : "Not set up. Run muninn setup" }); }
     return out;

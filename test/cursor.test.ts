@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { cursorRules, disableCursor, enableCursor, syncCursor } from "../src/deliver/cursor.js";
+import { rulesMissing, setRules } from "../src/deliver/auto-rules.js";
 import { repoIdentity } from "../src/repo/identity.js";
 import { openDb } from "../src/store/db.js";
 import { createLesson, decide, ensureRepo } from "../src/store/lessons.js";
@@ -22,6 +23,17 @@ const lesson = async (text: string, o: { alwaysOn?: boolean; keyword?: string; s
 const dir = () => join(root, ".cursor", "rules");
 
 describe("Cursor rules", () => {
+  it("notices when the rules file was deleted, and putting it back writes it again", async () => {
+    await lesson("Quote === in zsh", { alwaysOn: true });
+    const db = await openDb();
+    expect(await rulesMissing(db, repo, "cursor")).toBe(false);
+    await enableCursor(db, repo);
+    expect(await rulesMissing(db, repo, "cursor")).toBe(false);
+    execFileSync("rm", [join(dir(), "muninn.mdc")]);
+    expect(await rulesMissing(db, repo, "cursor")).toBe(true);
+    await setRules(db, repo, "cursor", true);
+    expect(await rulesMissing(db, repo, "cursor")).toBe(false);
+  });
   it("puts always-on and global lessons in one always-applied file, and keyword lessons in agent-requested files", async () => {
     await lesson("Quote === in zsh", { alwaysOn: true });
     await lesson("Explain simply", { alwaysOn: true, global: true });
