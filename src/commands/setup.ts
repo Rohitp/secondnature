@@ -69,6 +69,21 @@ async function quietly<T>(fn: () => Promise<T>): Promise<T> {
  * and the review page.
  */
 export async function setup(args: string[]) {
+  // Run through npx, this copy lives in a cache npm may clear, and the hooks would point at it. Install the command
+  // for good first, then carry on from that copy.
+  if (/[\\/]_npx[\\/]/.test(import.meta.url) && !process.env.MUNINN_FROM_NPX) {
+    const { spawnSync } = await import("node:child_process");
+    const { join } = await import("node:path");
+    console.log(`Installing the muninn command first, so the hooks don't point at npx's temporary copy:\n  ${c.cmd(`npm install -g secondnature@${version()}`)}\n`);
+    const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+    const inst = spawnSync(npm, ["install", "-g", `secondnature@${version()}`], { stdio: "inherit" });
+    if (inst.status !== 0) { console.log(`\n${mark.fail()} ${c.bold("Couldn't install the muninn command.")} Nothing else was changed.\n  ${next(`npm install -g secondnature`, "then muninn setup")}`); process.exitCode = 1; return; }
+    const prefix = spawnSync(npm, ["prefix", "-g"], { encoding: "utf8" }).stdout.trim();
+    const bin = process.platform === "win32" ? join(prefix, "muninn.cmd") : join(prefix, "bin", "muninn");
+    const r = spawnSync(bin, ["setup", ...args], { stdio: "inherit", env: { ...process.env, MUNINN_FROM_NPX: "1" } });
+    process.exitCode = r.status ?? 1;
+    return;
+  }
   const started = Date.now();
   console.log(`${c.bold(`secondnature ${version()}`)}\nTeach your coding agents once. Nothing is told to an agent until you keep it.\n`);
 
