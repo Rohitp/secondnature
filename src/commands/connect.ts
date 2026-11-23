@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ensureHome } from "../config.js";
+import { ensureHome, leftAlone } from "../config.js";
 import { install } from "./install.js";
 
 /**
@@ -57,13 +57,13 @@ export async function connectEverything(opts: { quiet?: boolean } = {}): Promise
   catch (e) { log({ what: "Hooks", result: "failed", note: e instanceof Error ? e.message : String(e) }); }
 
   // The plugin first: when it carries the MCP server, Claude Code needs no separate entry.
-  const plugin = opts.quiet ? null : connectClaudePlugin();
+  const plugin = opts.quiet || leftAlone("claude-code") ? null : connectClaudePlugin();
   if (plugin) log(plugin);
 
   // MCP everywhere else (and Claude Code's own entry when the plugin couldn't be installed).
   try {
     const { installMcp } = await import("../mcp/install.js");
-    const skipClaude = opts.quiet || plugin?.result === "done" || plugin?.result === "already";
+    const skipClaude = opts.quiet || leftAlone("claude-code") || plugin?.result === "done" || plugin?.result === "already";
     const done = quietly(() => installMcp({ skipClaudeCode: skipClaude }));
     log({ what: "MCP server, so agents can ask muninn questions", result: done.length ? "done" : "skipped", note: done.length ? done.join(", ") : "no other app with MCP found" });
   } catch (e) { log({ what: "MCP server", result: "failed", note: e instanceof Error ? e.message : String(e) }); }

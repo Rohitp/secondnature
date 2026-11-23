@@ -112,7 +112,8 @@ export async function homeScreen(commandCount: number) {
   out.push(`${c.bold("secondnature")}${c.dim(repo ? ` · ${shortRepo(repo)}${branch ? ` · ${branch}` : ""}` : " · not in a git repo")}`, "");
   // What needs you, most pressing first, each with its one next step.
   const needs: [string, string][] = [];
-  if (hl.state === "not-set-up") needs.push(["secondnature isn't set up on this machine, so agents aren't told anything.", "muninn setup"]);
+  const { leftAlone } = await import("../config.js");
+  if (hl.state === "not-set-up" && !leftAlone("claude-code")) needs.push(["secondnature isn't set up on this machine, so agents aren't told anything.", "muninn setup"]);
   else if (hl.state === "paused") needs.push(["secondnature is paused, so agents aren't told anything.", "muninn resume"]);
   else if (hl.state === "problem") needs.push(["secondnature had a problem the last time Claude Code called it.", "muninn status"]);
   if (h.waiting.count) needs.push([`${c.bold(`${plural(h.waiting.count, "new lesson")} to review.`)} Agents aren't told until you keep one.`, "muninn ui"]);

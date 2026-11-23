@@ -160,12 +160,12 @@ function nodeTooOld(): boolean {
   } catch { /* nothing recorded: explain below */ }
   // A copy built from the source folder is reinstalled from there; one installed from npm, with npm.
   const pkg = join(dirname(fileURLToPath(import.meta.url)), "..");
-  let again = "then run muninn again.";
+  let again = "then run muninn again";
   if (existsSync(join(pkg, "src"))) again = `then in ${pkg} run: pnpm install && pnpm build && npm link`;
   else { try { again = `then reinstall muninn with it: npm install -g ${JSON.parse(readFileSync(join(pkg, "package.json"), "utf8")).name}`; } catch { /* keep the plain line */ } }
-  console.error(`muninn needs Node 22 or newer. This is Node ${process.versions.node}.
-Install Node 22 (for example "fnm install 22", "nvm install 22" or "brew install node@22"), open a new terminal,
-${again}`);
+  console.error(`✗ secondnature needs Node 22 or later. This ${process.platform === "darwin" ? "Mac" : "machine"} has Node ${process.versions.node}.
+  Install it from https://nodejs.org or with ${process.platform === "darwin" ? "brew install node@22" : "nvm install 22"}, open a new terminal,
+  ${again}. Nothing was changed.`);
   process.exitCode = 1;
   return true;
 }

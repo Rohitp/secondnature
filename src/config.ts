@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, chmodSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -36,6 +36,8 @@ export const DEFAULTS = {
   judgeModel: "",
   /** Your own prices per million tokens, for models muninn doesn't know (Gemini, a discount): {"gemini-4-neon-high": {"input": 1.25, "output": 10, "cacheRead": 0.31}}. Matched by name prefix. */
   prices: {} as Record<string, { input: number; output: number; cacheRead?: number }>,
+  /** Coding tools you unticked in setup: no hooks or rules files for them, and their logs aren't read. */
+  leaveAlone: [] as ("claude-code" | "codex" | "cursor" | "antigravity")[],
 };
 export type Settings = typeof DEFAULTS;
 export function settings(): Settings {
@@ -52,4 +54,12 @@ export const logRoots = () => {
     antigravity: r ? join(r, "antigravity") : join(homedir(), ".gemini"),
   };
 };
+/** Saves some settings to ~/.muninn/config.json, keeping the others as they are. */
+export function saveSettings(change: Partial<Settings>) {
+  const f = join(ensureHome(), "config.json");
+  const now = existsSync(f) ? JSON.parse(readFileSync(f, "utf8")) : {};
+  writeFileSync(f, JSON.stringify({ ...now, ...change }, null, 2) + "\n");
+}
+/** Whether you asked setup to leave a coding tool alone. */
+export const leftAlone = (tool: string) => (settings().leaveAlone ?? []).includes(tool as never);
 export const isPaused = () => existsSync(join(home(), "paused"));

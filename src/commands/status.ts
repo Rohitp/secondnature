@@ -52,7 +52,9 @@ export async function status() {
   // Claude Code: hooks installed and called.
   const hooks = installed();
   const missing = Object.keys(EVENTS["claude-code"]).filter((e) => !hooks.includes(e));
-  if (!hooks.length) rows.push({ m: "need", name: "Claude Code", text: "not connected", why: "its agents aren't told your lessons", fix: "muninn setup" });
+  const { leftAlone } = await import("../config.js");
+  if (leftAlone("claude-code")) rows.push({ m: "skip", name: "Claude Code", text: "left alone, as you chose in setup", why: "muninn setup lets you tick it again" });
+  else if (!hooks.length) rows.push({ m: "need", name: "Claude Code", text: "not connected", why: "its agents aren't told your lessons", fix: "muninn setup" });
   else if (h.state === "problem") rows.push({ m: "fail", name: "Claude Code", text: "the last call failed", why: h.errors.at(-1)?.slice(25, 160), fix: "muninn connect" });
   else if (missing.length) rows.push({ m: "need", name: "Claude Code", text: `connected, but not for ${missing.map((e) => HOOK_WORDS[e]).join(", ")}`, fix: "muninn install" });
   else { const t = await lastTold("claude-code"); rows.push({ m: "ok", name: "Claude Code", text: t ? `working · last told ${when(t)}` : "connected · not told anything yet", why: t ? undefined : "start a session in a git repo and send a message" }); }
@@ -66,13 +68,15 @@ export async function status() {
     const has = (dir: string, re: RegExp) => { try { return !!root && readdirSync(join(root, dir)).some((f) => re.test(f)); } catch { return false; } };
     const short = repo.split("/").pop();
     for (const [tool, name, dir, re] of [["antigravity", "Antigravity", ".agents/rules", /^muninn/], ["cursor", "Cursor", ".cursor/rules", /^muninn.*\.mdc$/]] as const) {
+      if (leftAlone(tool)) { rows.push({ m: "skip", name, text: "left alone, as you chose in setup" }); continue; }
       if (!r?.[tool].on) { rows.push({ m: "skip", name, text: `off in ${short}`, why: `muninn ${tool} on gives its agent your lessons here` }); continue; }
       if (root && !has(dir, re)) { rows.push({ m: "need", name, text: `the rules file in ${short} is missing`, why: `so ${name} isn't told your lessons`, fix: "muninn connect" }); continue; }
       const t = await lastTold(tool);
       rows.push({ m: "ok", name, text: `told by rules files in ${short}${t ? ` · last told ${when(t)}` : ""}` });
     }
   }
-  if (codexPresent()) {
+  if (codexPresent() && leftAlone("codex")) rows.push({ m: "skip", name: "Codex", text: "left alone, as you chose in setup" });
+  else if (codexPresent()) {
     const ch = installed("codex");
     const t = await lastTold("codex");
     rows.push(!ch.length ? { m: "need", name: "Codex", text: "not connected", fix: "muninn install" } : t ? { m: "ok", name: "Codex", text: `working · last told ${when(t)}` } : { m: "skip", name: "Codex", text: "hooks added, not checked live yet", why: "Codex runs them only after you trust them in its /hooks" });
