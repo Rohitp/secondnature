@@ -342,6 +342,46 @@ pre code { background: none; padding: 0; }
 .state { font-size: 12px; font-weight: 600; border-radius: 10px; padding: 1px 8px; background: var(--fill); color: var(--body); text-align: right; }
 .state.good { background: var(--on-bg); color: var(--on); }
 @media (max-width: 600px) { .toldlist li { flex-wrap: wrap; } .toldlist .body { flex-basis: calc(100% - 58px); } .fb { margin-left: 58px; } }
+/* Lessons: tabs, then a list and the picked lesson side by side (stacked on narrow screens). */
+.ltabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line); }
+.ltab { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: transparent; cursor: pointer; font-weight: 600; color: var(--muted); }
+.ltab[aria-selected="true"] { border-bottom-color: var(--link); color: var(--ink); }
+.ltab:hover { color: var(--ink); }
+.lcount { font-size: 12px; font-weight: 600; border-radius: 10px; padding: 0 7px; background: var(--fill); color: var(--body); }
+.lcount.hot { background: var(--warn-bg); color: var(--warn); }
+.lsplit { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+.llist { flex: 1 1 380px; overflow: hidden; }
+.plainlist { list-style: none; margin: 0; padding: 0; }
+.llist .plainlist > li { border-bottom: 1px solid var(--line-soft); }
+.llist .plainlist > li:last-child { border-bottom: 0; }
+.lrow { all: unset; box-sizing: border-box; display: flex; flex-direction: column; gap: 6px; width: 100%; padding: 14px 18px; cursor: pointer; border-left: 3px solid transparent; }
+.lrow:hover { background: var(--hover); }
+.lrow[aria-pressed="true"] { background: var(--chip); border-left-color: var(--link); }
+.lrow:focus-visible { outline: 2px solid var(--link); outline-offset: -2px; }
+.lrow .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.kindchip { font-size: 12px; font-weight: 600; color: var(--body); background: var(--fill); border-radius: 4px; padding: 0 6px; }
+.lrow[aria-pressed="true"] .kindchip { background: var(--group); }
+.lmeta { font-size: 12px; color: var(--muted); }
+.ltext { font-weight: 500; color: var(--ink); overflow-wrap: anywhere; }
+.lrow .status { align-self: flex-start; }
+.lsplit > .plainlist { flex: 1.4 1 460px; min-width: 0; }
+.lpane { padding: 20px; display: flex; flex-direction: column; gap: 16px; position: sticky; top: 16px; }
+.ltitle { margin: 0; font: 600 20px/1.3 var(--display); color: var(--ink); overflow-wrap: anywhere; }
+.lpane p { margin: 0; color: var(--body); }
+.similar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; padding: 10px 12px; border: 1px solid var(--line-strong); background: var(--chip); border-radius: 8px; font-size: 13px; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); gap: 10px; }
+.facts > div { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
+.label { margin: 0; font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.quote { display: flex; gap: 12px; padding: 10px 12px; background: var(--bg); border-radius: 8px; font-size: 13px; overflow-wrap: anywhere; }
+.qmeta { flex: none; width: 96px; display: flex; flex-direction: column; font-size: 12px; color: var(--muted); }
+.toldbox { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; }
+.toldbox .fix { align-self: flex-start; }
+.lactions { display: flex; flex-wrap: wrap; gap: 8px; border-top: 1px solid var(--line-soft); padding-top: 16px; }
+.btn2.big { min-height: 44px; padding: 0 16px; font-size: 14px; }
+.switchbtn { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 14px 0 8px; border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--group); cursor: pointer; font-weight: 600; }
+.switchbtn .switch { pointer-events: none; display: inline-block; }
+@media (max-width: 900px) { .lpane { position: static; } }
+@media (max-width: 600px) { .quote { flex-direction: column; gap: 4px; } .qmeta { width: auto; flex-direction: row; gap: 8px; } }
 </style>
 </head>
 <body>
@@ -379,9 +419,10 @@ function rememberPick() {
   if (planBranch) u.searchParams.set("branch", planBranch); else u.searchParams.delete("branch");
   if (tab) u.searchParams.set("tab", tab); else u.searchParams.delete("tab");
   if (runPage) u.searchParams.set("run", runPage); else u.searchParams.delete("run");
+  if (typeof ltab !== "undefined" && ltab) u.searchParams.set("lt", ltab); else u.searchParams.delete("lt");
+  if (typeof sel !== "undefined" && sel) u.searchParams.set("sel", sel); else u.searchParams.delete("sel");
   history.replaceState(null, "", u);
 }
-let showAll = false;
 let open = null; // the id of the row opened for editing
 let openQuery = null; // the agent question opened in "What agents asked", to show what it got back
 let data = null;
@@ -1028,55 +1069,29 @@ function whenChoices(route, kws) {
     <div class="replay"><button class="linkbtn" data-replay>When would this have been told?</button><div data-replay-out></div></div>`;
 }
 
-function suggestionRow(l) {
-  const d = l.defaults;
-  const isOpen = open === l.id;
-  // From commands, the evidence is the runs themselves, shown as they were; from what you typed, your words.
-  const runs = (l.evidence || []).some((e) => e.quote.startsWith("$ "));
-  const ev = (l.evidence || []).slice(0, 3).map((e) => runs ? `<div class="mono run">${esc(e.quote)}</div>` : `<div>"${esc(e.quote)}"</div>`).join("");
-  return `<li data-id="${esc(l.id)}">
-    <div class="row">
-      <button class="main" data-open="${esc(l.id)}" aria-expanded="${isOpen}"><div class="title">${esc(l.plain || l.text)}</div><div class="sub">${roleChip(l)}${esc(l.origin)}</div>${l.why ? `<div class="sub why">Why: ${esc(l.why)}</div>` : ""}${l.worth ? `<div class="sub">${esc(l.worth)}</div>` : ""}</button>
-      <button class="x" data-dismiss="${esc(l.id)}" title="Don't suggest this again">Dismiss</button>
-      <button class="btn" data-open="${esc(l.id)}">Edit</button>
-      <button class="add" data-add="${esc(l.id)}">Keep</button>
-    </div>
-    ${isOpen ? `<div class="detail">
+/* What kind of thing each lesson came from, in a few words, for the list and the detail. */
+const KIND_SHORT = {
+  repeat: "Said more than once", stated: "Rule you stated", correction: "Correction", explained: "Explained at length", confused: "Agent was confused",
+  friction: "Friction", steered: "You steered", promised: "Agent promised", sent_back: "Agent corrected agent", missed: "Missed by a reviewer",
+  unanswered: "Agents kept asking", wrong_path: "Looked in the wrong place", failure_then_fix: "Failed, then fixed", loop: "Same command failed again",
+  mistake_returned: "Mistake came back", stopped: "You stopped the agent", reread: "Read the same file again", refetch: "Fetched the same page again",
+  one_by_one: "Done one at a time", skimmed: "Skimmed a long output", big_output: "Very long output", big_file: "Read a very large file",
+};
+const kindOf = (l) => KIND_SHORT[l.signal] || (l.kind === "note" ? "Note" : "Lesson");
+/** Who said the evidence: you, or an agent. */
+const whoSaid = (l, quote) => (quote.startsWith("$ ") ? "Ran" : ["repeat", "correction", "explained", "confused", "friction", "stated", "steered", "stopped"].includes(l.signal) ? "You" : l.signal === "unanswered" ? "Agent asked" : "Agent");
+/** The edit form for one lesson: its words, when it's told, where and to whom. Shown in the detail pane after Edit. */
+function editForm(l, kept) {
+  const d = l.defaults || { route: "none", keywords: [], global: false };
+  const route = kept ? (l.always_on ? "always" : l.triggers.length ? "keyword" : "none") : d.route;
+  const kws = kept ? l.triggers.join(", ") : (d.keywords.length ? d.keywords : l.suggested || []).join(", ");
+  return `<div class="detail" style="padding:0">
       <label for="t-${esc(l.id)}">What agents are told</label>
       <textarea id="t-${esc(l.id)}" rows="3" data-f="text">${esc(l.text)}</textarea>
-      ${whenChoices(d.route, (d.keywords.length ? d.keywords : l.suggested || []).join(", "))}${roleNote(l)}
-      ${whereFields(l, l.scope === "global" || d.global)}
-      ${ev ? `<div class="evidence">${runs ? "What ran in your session:" : ["repeat", "correction", "explained", "confused", "friction", "stated", "steered"].includes(l.signal) ? "You said:" : l.signal === "promised" ? "The agent said:" : l.signal === "sent_back" || l.signal === "missed" ? "What the agents said:" : l.signal === "unanswered" ? "What agents asked:" : "From your session:"} ${ev}</div>` : ""}
-      <div class="btns"><button class="btn primary" data-add="${esc(l.id)}" data-custom="1">Keep</button><button class="btn" data-open="${esc(l.id)}">Cancel</button></div>
-    </div>` : ""}
-  </li>`;
-}
-function lessonRow(l) {
-  const c = data.home.cameBack.find((x) => x.id === l.id);
-  const last = data.home.carry.find((x) => x.id === l.id)?.lastTold;
-  const route = l.always_on ? "always" : l.triggers.length ? "keyword" : "none";
-  const isOpen = open === l.id;
-  return `<li data-id="${esc(l.id)}">
-    <div class="row ${l.off ? "off" : ""}">
-      <button class="main" data-open="${esc(l.id)}" aria-expanded="${isOpen}">
-        <div class="title">${esc(l.plain || l.text)}</div>
-        <div class="sub">${roleChip(l)}${l.off ? "Off · agents aren't told this" : esc(whenText(l)) + (last ? ` · last told ${esc(ago(last))}` : "") + (data.lessonFinds[l.id] ? ` · found by agents ${data.lessonFinds[l.id]} time${data.lessonFinds[l.id] === 1 ? "" : "s"}` : "")}</div>
-        ${(() => { const fx = !l.off && data.effects.find((x) => x.id === l.id); if (!fx) return ""; const [word, cls] = VERDICT[fx.verdict] || ["", ""]; return word ? `<div class="sub" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px"><span class="status ${cls}">${esc(word.replace("{role}", fx.role))}</span><span>${esc(fx.summary)}</span></div>` : ""; })()}
-        ${l.missing?.length ? `<div class="warnline">Names ${l.missing.map((f) => `<code>${esc(f)}</code>`).join(", ")}, which ${l.missing.length === 1 ? "is" : "are"} no longer in the repo. The lesson may be out of date: edit it or switch it off.</div>` : ""}
-        ${c && !l.off ? `<div class="warnline">The problem came back. ${esc(c.verdict.replace(/ Make it always-on\?$/, ""))}</div>` : ""}
-      </button>
-      <button class="switch" role="switch" aria-checked="${!l.off}" aria-label="${l.off ? "Off" : "On"}: ${esc(l.plain || l.text)}" data-toggle="${esc(l.id)}"></button>
-    </div>
-    ${c && c.fix && !l.off && !isOpen ? `<div style="padding:0 18px 12px"><button class="fix" data-fix="${esc(l.id)}">Tell agents every session</button></div>` : ""}
-    ${isOpen ? `<div class="detail">
-      <label for="t-${esc(l.id)}">What agents are told</label>
-      <textarea id="t-${esc(l.id)}" rows="3" data-f="text">${esc(l.text)}</textarea>
-      ${l.why ? `<p class="hint">Why: ${esc(l.why)}</p>` : ""}
-      ${whenChoices(route, l.triggers.join(", "))}${roleNote(l)}
-      ${whereFields(l, l.scope === "global")}
-      <div class="btns"><button class="btn primary" data-save="${esc(l.id)}">Save</button><button class="btn" data-open="${esc(l.id)}">Cancel</button><button class="btn textbtn" data-remove="${esc(l.id)}">Remove lesson</button></div>
-    </div>` : ""}
-  </li>`;
+      ${whenChoices(route, kws)}${roleNote(l)}
+      ${whereFields(l, l.scope === "global" || (!kept && d.global))}
+      <div class="btns">${kept ? `<button class="btn primary" data-save="${esc(l.id)}">Save</button>` : `<button class="btn primary" data-add="${esc(l.id)}" data-custom="1">Keep</button>`}<button class="btn" data-open="${esc(l.id)}">Cancel</button></div>
+    </div>`;
 }
 
 function draw() {
@@ -1089,7 +1104,7 @@ function draw() {
 /* How many things wait for a yes or no in this repo: suggestions, proposed file changes, out-of-date CLAUDE.md lines. */
 const waitingCount = () => data.suggested.length + (data.proposals?.waiting?.length || 0) + (data.memory || []).filter((m) => m.status === "open").length;
 /* The tab open now: the one picked, else Home. */
-const currentTab = () => tab || "home";
+const currentTab = () => (tab === "review" ? "lessons" : tab || "home");
 /* Line icons for the sidebar, drawn with the text colour. */
 const svg = (d, size = 18) => `<svg aria-hidden="true" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
 const ICON = {
@@ -1112,8 +1127,7 @@ function drawSide() {
       <select id="repo"><option value="" ${repo ? "" : "selected"}>All repos</option>${[...new Set([HERE, repo].filter((r) => r && !repos.some((x) => x.id === r)))].map((r) => `<option value="${esc(r)}" ${r === repo ? "selected" : ""}>${esc(short(r))}${r === HERE ? " (this folder)" : ""}</option>`).join("")}${repos.map((r) => `<option value="${esc(r.id)}" ${r.id === repo ? "selected" : ""}>${esc(short(r.id))}${r.waiting && r.id !== repo ? ` (${r.waiting} waiting)` : ""}</option>`).join("")}</select></div>
     <nav class="nav" aria-label="Sections">
       ${tabBtn("home", "Home")}
-      ${tabBtn("review", "To review", n ? `<span class="count">${n}</span>` : "")}
-      ${tabBtn("lessons", "Lessons")}
+      ${tabBtn("lessons", "Lessons", n ? `<span class="count">${n}</span>` : "")}
       ${repo ? tabBtn("plan", "Plan") : ""}
       ${tabBtn("activity", "Activity")}
     </nav>
@@ -1126,7 +1140,7 @@ function drawSide() {
 function drawPage() {
   drawSide();
   const t = currentTab();
-  const body = t === "home" ? homeView() : t === "review" ? reviewView() : t === "lessons" ? lessonsView() : t === "plan" ? (repo && data.plan ? planSection() : lessonsView())
+  const body = t === "home" ? homeView() : t === "lessons" ? lessonsView() : t === "plan" ? (repo && data.plan ? planSection() : lessonsView())
     : t === "activity" ? (runPage ? runPageView() : activityView()) : settingsView();
   $("#main").innerHTML = `<div class="grid">${body}</div>`;
 }
@@ -1163,9 +1177,9 @@ function homeView() {
   const props = data.proposals?.waiting?.length || 0; const lines = (data.memory || []).filter((m) => m.status === "open").length;
   const others = repo ? data.repos.filter((r) => r.id !== repo && r.waiting) : [];
   const more = [
-    ...(props ? [{ title: `${props} proposed edit${props === 1 ? "" : "s"} to CLAUDE.md or skills`, note: "Your Claude checked this repo's instruction files against your sessions.", cta: "Review", attr: 'data-tab="review"' }] : []),
-    ...(lines ? [{ title: `${lines} line${lines === 1 ? "" : "s"} in CLAUDE.md may be out of date`, note: "They name files or commands that aren't in the repo any more.", cta: "Review", attr: 'data-tab="review"' }] : []),
-    ...h.cameBack.slice(0, 3).map((c) => ({ title: "A problem came back", note: `“${c.text}”: it happened again after you kept the lesson.`, cta: "See the lesson", attr: 'data-tab="lessons"' })),
+    ...(props ? [{ title: `${props} proposed edit${props === 1 ? "" : "s"} to CLAUDE.md or skills`, note: "Your Claude checked this repo's instruction files against your sessions.", cta: "Review", attr: 'data-tab="lessons" data-ltab="changes"' }] : []),
+    ...(lines ? [{ title: `${lines} line${lines === 1 ? "" : "s"} in CLAUDE.md may be out of date`, note: "They name files or commands that aren't in the repo any more.", cta: "Review", attr: 'data-tab="lessons" data-ltab="changes"' }] : []),
+    ...h.cameBack.slice(0, 3).map((c) => ({ title: "A problem came back", note: `“${c.text}”: it happened again after you kept the lesson.`, cta: "See the lesson", attr: `data-tab="lessons" data-ltab="kept" data-sel="${esc(c.id)}"` })),
     ...others.slice(0, 3).map((r) => ({ title: `${r.waiting} waiting in ${short(r.id)}`, note: "New lessons from your sessions in that repo.", cta: "Open", attr: `data-repo="${esc(r.id)}"` })),
   ];
   // The headline: new lessons first, as they're what most often waits; else whatever else needs you.
@@ -1179,7 +1193,7 @@ function homeView() {
   const needs = `<section class="card needs" aria-label="Needs you">
       <div class="top"><div class="what"><span class="num${head ? "" : " ok"}" aria-hidden="true">${head ? head.num : "✓"}</span>
         <div><strong>${head ? head.title : "Nothing needs you"}</strong><span>${head ? head.sub : "New lessons show here as secondnature reads your sessions."}</span></div></div>
-        ${head?.cta ? `<button class="btnlink" data-tab="review">${head.cta}</button>` : ""}</div>
+        ${head?.cta ? `<button class="btnlink" data-tab="lessons" data-ltab="${s ? "review" : "changes"}">${head.cta}</button>` : ""}</div>
       ${listOpen ? `<ul class="morelist">${shown.map((m) => `<li><div><strong>${esc(m.title)}</strong><span>${esc(m.note)}</span></div><button class="btn2" ${m.attr}>${esc(m.cta)}</button></li>`).join("")}</ul>`
       : shown.length ? `<button class="moretoggle" aria-expanded="${homeMore}" data-home-more><span class="dot" aria-hidden="true"></span>${homeMore ? "Hide" : `${shown.length} more thing${shown.length === 1 ? "" : "s"} need${shown.length === 1 ? "s" : ""} you`}</button>
         ${homeMore ? `<ul class="morelist">${shown.map((m) => `<li><div><strong>${esc(m.title)}</strong><span>${esc(m.note)}</span></div><button class="btn2" ${m.attr}>${esc(m.cta)}</button></li>`).join("")}</ul>` : ""}` : ""}
@@ -1226,62 +1240,105 @@ function homeView() {
       ${repo ? "" : `<span class="sub" style="margin-top:6px">Pick a repo to see Cursor and Antigravity.</span>`}</section>` : "";
 
   return `<header class="homehead"><div><h1>Home</h1><p class="lead">What needs you, and what secondnature told your agents today${repo ? ` in ${esc(short(repo))}` : ""}.</p></div>
-      <form class="asksearch" data-home-ask role="search">${svg('<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>', 16)}<label class="vh" for="homeq">Ask about your work</label>
-        <input id="homeq" name="q" type="search" autocomplete="off" placeholder="Ask about your work, e.g. how did we fix the webhook?"><span class="kbd" aria-hidden="true">⌘K</span></form></header>
+      ${askBox()}</header>
     ${needs}
     <div class="homegrid">${toldCard}<div class="homecol">${left}${week}${tools}</div></div>`;
 }
-/* To review: everything waiting for a yes or no, one queue. */
-function reviewView() {
-  const { suggested, kept, repos } = data;
-  const n = waitingCount();
-  const shown = showAll ? suggested : suggested.slice(0, 6);
-  const others = repo ? repos.filter((r) => r.id !== repo && r.waiting) : [];
-  const first = !suggested.length && !kept.length;
-  return `<div class="pagehead"><div><h1>${n ? `${n} thing${n === 1 ? "" : "s"} need${n === 1 ? "s" : ""} you` : first ? "secondnature hasn't found anything yet" : "Nothing needs you"}</h1>
-      <p class="lead">${first ? "It reads the logs your coding agents keep on this machine, finds what you keep telling them and what goes wrong, and suggests lessons for you to keep. Short, redacted excerpts go to your own Claude to write them." : "Nothing changes for your agents until you decide. Each one says where it came from and who it affects."}</p></div></div>
-    <div class="stack s8">
-      ${first ? `<div class="panel panelbody"><button class="btn primary" data-scan ${data.scan.running ? "disabled" : ""}>${data.scan.running ? "Checking…" : "Find lessons in my sessions"}</button><p class="note" style="margin:10px 0 0">Takes a few minutes. Suggestions appear here as each repo finishes.</p></div>` : ""}
-      ${suggested.length ? `<section aria-labelledby="sg"><h2 id="sg">Told to agents · ${suggested.length}</h2>
-        <ul class="group">${shown.map(suggestionRow).join("")}
-          ${suggested.length > 6 ? `<li><button class="more" data-more>${showAll ? "Show fewer" : `See all ${suggested.length}`}</button></li>` : ""}</ul>
-        <p class="note">Keep tells your agents from their next session. Edit to change the wording or when it's told first.</p></section>` : ""}
-      ${data.proposals?.waiting?.length || data.proposals?.applied?.length ? changesSection() : ""}
-      ${memorySection()}
-      ${!n && !first ? `<ul class="group"><li class="empty">All caught up. New suggestions appear here as secondnature reads your sessions.</li></ul>` : ""}
-    </div>
-    <div class="stack s4">
-      ${others.length ? `<section><h2>Waiting in other repos</h2><ul class="group">${others.map((r) => `<li><div class="row"><button class="main" data-repo="${esc(r.id)}"><div class="title" style="font-weight:500">${esc(short(r.id))}</div></button><span class="count">${r.waiting}</span></div></li>`).join("")}</ul></section>` : ""}
-      ${repo ? `<section><h2>Instruction files</h2><div class="panel panelbody">${proposing ? `<span class="spin" aria-hidden="true" style="display:inline-block;vertical-align:-2px"></span> Your Claude is reviewing this repo's CLAUDE.md, AGENTS.md and skills…` : `<button class="btn" data-propose>Review CLAUDE.md and skills</button><p class="note" style="margin:10px 0 0">Checks CLAUDE.md, AGENTS.md and skills against your sessions and proposes edits here. One call to your Claude.</p>`}</div></section>` : ""}
-      <section><h2>How these are found</h2><div class="panel panelbody" style="color:var(--muted);font-size:13px;line-height:19px">secondnature reads your agents' logs on this machine after each session${data.schedule?.on ? ` and every ${data.schedule.everyHours} hours` : ""}. It suggests a lesson when you say something more than once, state a rule, correct an agent, or when work keeps going wrong the same way.</div></section>
-    </div>`;
+/* Lessons: one place for what's new, what agents are told, what's gone quiet, and proposed file changes.
+   A list on the left; the picked lesson on the right, with where it came from and what you can do. */
+let ltab = picked.get("lt") || null; // review, kept, lately or changes; none picked opens To review when something waits
+let sel = picked.get("sel") || null;
+const LTABS = [
+  { key: "review", label: "To review", help: "Found in your sessions. Agents aren't told until you keep one." },
+  { key: "kept", label: "Kept", help: "Agents are told these. Switch one off to keep it without telling it." },
+  { key: "lately", label: "Not needed lately", help: "Kept, but not told for 2 weeks. Never deleted on its own." },
+  { key: "changes", label: "Proposed changes", help: "Edits to CLAUDE.md and skills, and lines that may be out of date. Each can be undone." },
+];
+function lessonLists() {
+  const fading = new Set(data.home.carry.filter((c) => c.state === "fading").map((c) => c.id));
+  return {
+    review: data.suggested,
+    kept: data.kept.filter((l) => l.off || !fading.has(l.id)),
+    lately: data.kept.filter((l) => !l.off && fading.has(l.id)),
+    changes: (data.proposals?.waiting?.length || 0) + (data.memory || []).filter((m) => m.status === "open").length,
+  };
 }
-/* Lessons: what agents are told, grouped by who hears it. */
+const currentLtab = () => ltab || (data.suggested.length ? "review" : "kept");
+/** How a kept lesson is doing, as a word and a tone: from role effects, problems that came back, or being switched off. */
+function lessonStatus(l) {
+  if (l.off) return { word: "Off", cls: "", line: "Kept, but agents aren't told it until you switch it back on." };
+  const c = data.home.cameBack.find((x) => x.id === l.id);
+  if (c) return { word: "Still happening", cls: "warn", line: `The problem came back. ${c.verdict.replace(/ Make it always-on\?$/, "")}`, fix: c.fix };
+  const fx = data.effects.find((x) => x.id === l.id);
+  if (fx) { const [word, cls] = VERDICT[fx.verdict] || ["", ""]; if (word) return { word: word.replace("{role}", fx.role), cls, line: fx.summary }; }
+  if (l.missing?.length) return { word: "May be out of date", cls: "caution", line: `Names ${l.missing.join(", ")}, which ${l.missing.length === 1 ? "is" : "are"} no longer in the repo.` };
+  return null;
+}
+function lessonListRow(l, tabKey) {
+  const st = tabKey === "review" ? null : lessonStatus(l);
+  const last = data.home.carry.find((x) => x.id === l.id)?.lastTold;
+  const meta = tabKey === "review" ? l.origin : `${whenText(l)}${last ? ` · last told ${ago(last)}` : ""}`;
+  return `<li><button class="lrow" data-sel="${esc(l.id)}" aria-pressed="${sel === l.id}">
+      <span class="chips"><span class="kindchip">${esc(kindOf(l))}</span>${l.role ? `<span class="rolechip2">${esc(l.role)}</span>` : ""}<span class="lmeta">${esc(meta)}</span></span>
+      <span class="ltext">${esc(clip(l.plain || l.text, 160))}</span>
+      ${st ? `<span class="status ${st.cls}">${esc(st.word)}</span>` : ""}</button></li>`;
+}
+function lessonPane(l, tabKey) {
+  const kept = tabKey !== "review";
+  const editing = open === l.id;
+  const st = kept ? lessonStatus(l) : null;
+  const last = data.home.carry.find((x) => x.id === l.id)?.lastTold;
+  const finds = data.lessonFinds[l.id];
+  const who = l.role ? `Only the ${l.role} role` : (kept ? l.scope === "global" : l.defaults?.global) ? "Agents in every repo" : `Agents in ${short(l.repo_id || repo)}`;
+  const when = kept ? whenText(l).split(" · ")[0] : (l.defaults?.route === "always" ? "Every session" : l.defaults?.route === "keyword" ? `When "${l.defaults.keywords.join('", "')}" comes up` : "Only when searched");
+  const ev = (l.evidence || []).slice(0, 4);
+  return `<ul class="plainlist"><li data-id="${esc(l.id)}"><section class="card lpane" aria-label="Selected lesson">
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <span class="sub">${esc(kindOf(l))}${kept ? "" : ` · ${esc(l.origin)}`}</span>
+        <p class="ltitle">${esc(l.plain || l.text)}</p>
+        ${l.plain && l.plain !== l.text ? `<p class="sub" style="font-size:13px">Agents are told: ${esc(l.text)}</p>` : ""}
+        ${l.why ? `<p><strong style="color:var(--ink)">Why:</strong> ${esc(l.why)}</p>` : l.worth ? `<p>${esc(l.worth)}</p>` : ""}
+      </div>
+      ${l.similar && !kept ? `<div class="similar"><span>Nearly the same as a lesson you ${l.similar.status === "live" ? "kept" : "were shown"}: “${esc(clip(l.similar.plain || l.similar.text, 140))}”</span></div>` : ""}
+      ${editing ? editForm(l, kept) : `<div class="facts"><div><span class="sub">Who is told</span><span>${esc(who)}</span></div><div><span class="sub">When they're told</span><span>${esc(when)}</span></div></div>`}
+      ${ev.length ? `<div style="display:flex;flex-direction:column;gap:8px"><h3 class="label">Where it came from · ${(l.evidence || []).length}</h3>
+        ${ev.map((e) => `<div class="quote"><span class="qmeta"><span class="mono" style="font-size:12px">${esc(shortDate(e.seen_at))}</span><span>${esc(TOOL_NAMES[e.tool] || e.tool)}</span></span><span><strong>${esc(whoSaid(l, e.quote))}:</strong> ${esc(clip(e.quote.replace(/^\$ /, ""), 400))}</span></div>`).join("")}
+        <span class="sub">Quotes are stored redacted. Text you wrap in &lt;private&gt; is never kept.</span></div>` : ""}
+      ${kept ? `<div class="toldbox"><span>${last ? `Last told ${esc(ago(last))}.` : "Not told yet."}${finds ? ` Found by agents searching ${finds} time${finds === 1 ? "" : "s"}.` : ""}</span>${st ? `<span class="sub" style="font-size:13px">${esc(st.line)}</span>` : ""}
+        ${st?.fix ? `<button class="fix" data-fix="${esc(l.id)}">Tell agents every session</button>` : ""}</div>` : ""}
+      ${editing ? "" : `<div class="lactions">${kept
+        ? `<button class="switchbtn" role="switch" aria-checked="${!l.off}" data-toggle="${esc(l.id)}"><span class="switch" aria-hidden="true" aria-checked="${!l.off}"></span>${l.off ? "Off: agents aren't told" : "On: agents are told"}</button>
+           <button class="btn2 big" data-open="${esc(l.id)}">Edit</button><button class="btn2 big" data-remove="${esc(l.id)}">Remove</button>`
+        : `<button class="btnlink" data-add="${esc(l.id)}">Keep</button><button class="btn2 big" data-open="${esc(l.id)}">Edit</button><button class="btn2 big" data-dismiss="${esc(l.id)}">Don't keep</button>`}</div>`}
+    </section></li></ul>`;
+}
 function lessonsView() {
-  const { kept, suggested } = data;
-  const on = kept.filter((l) => !l.off), off = kept.filter((l) => l.off);
-  const roles = on.filter((l) => l.role).sort((a, b) => a.role.localeCompare(b.role));
-  const all = on.filter((l) => !l.role && l.scope === "global");
-  const here = on.filter((l) => !l.role && l.scope !== "global");
-  const group = (title, list, empty) => `<section><h2>${title} · ${list.length}</h2><ul class="group">${list.length ? list.map(lessonRow).join("") : `<li class="empty">${empty}</li>`}</ul></section>`;
-  return `<div class="pagehead"><div><h1>What agents are told${repo ? ` in ${esc(short(repo))}` : ""}</h1>
-      <p class="lead">Switch a lesson on and your Claude Code, Codex, Cursor and Antigravity agents are told it. Switch it off and they aren't. Tap one to change its wording or when it's told.</p></div></div>
-    <div class="stack s8">
-      ${!kept.length ? `<ul class="group"><li class="empty">${suggested.length ? `Nothing kept yet. ${suggested.length} suggestion${suggested.length === 1 ? " is" : "s are"} waiting in <button class="linkbtn" data-tab="review">To review</button>.` : "Nothing kept yet. Keep a suggestion and your agents are told it from their next session."}</li></ul>` : ""}
-      ${roles.length ? group("One role only", roles, "") : ""}
-      ${kept.length && repo ? group("This repo", here, `None yet. A lesson you keep for every agent in ${esc(short(repo))} shows here.`) : ""}
-      ${kept.length ? group(repo ? "All repos" : "Kept", repo ? all : on.filter((l) => !l.role), "None yet.") : ""}
-      ${off.length ? group("Switched off", off, "") : ""}
-    </div>
-    <div class="stack s4">
-      <section><h2>When agents are told</h2><ul class="group">
-        <li><div class="row"><div class="main" style="cursor:default"><div class="title" style="font-weight:500">Every session</div><div class="sub">At the start, before any work.</div></div></div></li>
-        <li><div class="row"><div class="main" style="cursor:default"><div class="title" style="font-weight:500">When a word comes up</div><div class="sub">Mid-task, in your prompt or a failed command.</div></div></div></li>
-        <li><div class="row"><div class="main" style="cursor:default"><div class="title" style="font-weight:500">On request</div><div class="sub">Only when an agent runs muninn ask.</div></div></div></li>
-      </ul></section>
-      ${roles.length ? `<section><h2>Is it helping?</h2><div class="panel panelbody" style="color:var(--muted);font-size:13px;line-height:19px">A role lesson is compared with how that role did before you kept it. After its runs it shows Helping, Still happening, or Not reaching the role, with the numbers.</div></section>` : ""}
+  const lists = lessonLists(); const t = currentLtab();
+  const tabs = LTABS.map((x) => { const n = Array.isArray(lists[x.key]) ? lists[x.key].length : lists[x.key];
+    return `<button role="tab" class="ltab" aria-selected="${x.key === t}" data-ltab="${x.key}">${x.label}<span class="lcount${(x.key === "review" || x.key === "changes") && n ? " hot" : ""}">${n}</span></button>`; }).join("");
+  const help = LTABS.find((x) => x.key === t).help;
+  const head = `<header class="homehead"><div><h1>Lessons</h1><p class="lead">What your agents are told${repo ? ` in ${esc(short(repo))}` : ""}. New ones wait here until you keep them.</p></div>${askBox()}</header>
+    <div class="s12"><div role="tablist" aria-label="Lessons" class="ltabs">${tabs}</div><p class="sub" style="margin:8px 0 0">${help}${t === "review" ? ` ${scanLine()}` : ""}</p></div>`;
+  if (t === "changes") {
+    const any = lists.changes || data.proposals?.applied?.length;
+    return head + `<div class="stack s8">${changesSection() || (any ? "" : `<ul class="group"><li class="empty">No proposed changes right now. Pick a repo to have your Claude review its CLAUDE.md and skills.</li></ul>`)}${memorySection()}</div>
+      </div>`;
+  }
+  const list = lists[t];
+  if (!list.find((l) => l.id === sel)) sel = list[0]?.id || null;
+  const picked = list.find((l) => l.id === sel);
+  const first = !data.suggested.length && !data.kept.length;
+  return head + `<div class="lsplit">
+      <section class="card llist" aria-label="${esc(LTABS.find((x) => x.key === t).label)}">
+        ${list.length ? `<ul class="plainlist">${list.map((l) => lessonListRow(l, t)).join("")}</ul>`
+          : `<div class="empty" style="display:flex;flex-direction:column;gap:10px;align-items:flex-start"><strong style="color:var(--ink)">Nothing here right now</strong><span>${first ? "secondnature reads the logs your coding agents keep on this machine, finds what you keep telling them and what goes wrong, and suggests lessons for you to keep." : "secondnature checks your sessions on its own after they end."}</span>${first ? `<button class="btnlink" data-scan ${data.scan.running ? "disabled" : ""}>${data.scan.running ? "Checking…" : "Find lessons in my sessions"}</button>` : ""}</div>`}
+      </section>
+      ${picked ? lessonPane(picked, t) : ""}
     </div>`;
 }
+/** The "Ask about your work" box in a page's header. */
+const askBox = () => `<form class="asksearch" data-home-ask role="search">${svg('<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>', 16)}<label class="vh" for="homeq">Ask about your work</label>
+  <input id="homeq" name="q" type="search" autocomplete="off" placeholder="Ask about your work, e.g. how did we fix the webhook?"><span class="kbd" aria-hidden="true">⌘K</span></form>`;
 /* Activity: the week, runs and what they showed. */
 function activityView() {
   const totals = data.runs.reduce((a, r) => { const n = data.runInfo[r.id]?.numbers; if (n) { a.tokens += n.tokens; a.approvals += n.approvals; a.rework += n.rework + n.sentBack; } return a; }, { tokens: 0, approvals: 0, rework: 0 });
@@ -1538,7 +1595,6 @@ document.addEventListener("click", async (e) => {
   const li = el.closest("li[data-id]");
   try {
     if (el.dataset.open) { open = open === el.dataset.open ? null : el.dataset.open; draw(); return; }
-    if (el.dataset.more !== undefined) { showAll = !showAll; draw(); return; }
     if (el.dataset.homeMore !== undefined) { homeMore = !homeMore; draw(); return; }
     if (el.dataset.fb) {
       const key = el.dataset.fbKey; const [kind, id, session] = key.split(":");
@@ -1622,7 +1678,9 @@ document.addEventListener("click", async (e) => {
       drawAsk(); toast("Deleted that chat."); return;
     }
     if (el.dataset.runView) { runViewPick[runPage] = el.dataset.runView; draw(); return; }
-    if (el.dataset.tab) { tab = el.dataset.tab; runPage = null; open = null; rememberPick(); draw(); window.scrollTo(0, 0); return; }
+    if (el.dataset.tab) { tab = el.dataset.tab === "review" ? "lessons" : el.dataset.tab; if (el.dataset.ltab) ltab = el.dataset.ltab; if (el.dataset.sel) sel = el.dataset.sel; runPage = null; open = null; rememberPick(); draw(); window.scrollTo(0, 0); return; }
+    if (el.dataset.ltab) { ltab = el.dataset.ltab; sel = null; open = null; rememberPick(); draw(); return; }
+    if (el.dataset.sel) { sel = el.dataset.sel; open = null; rememberPick(); draw(); if (matchMedia("(max-width: 900px)").matches) $(".lpane")?.scrollIntoView({ block: "start" }); return; }
     if (el.dataset.runOpen) { runPage = el.dataset.runOpen; tab = "activity"; rememberPick(); draw(); window.scrollTo(0, 0); return; }
     if (el.dataset.runAll) { const id = el.dataset.runAll; if (runAll.has(id)) runAll.delete(id); else runAll.add(id); draw(); return; }
     if (el.dataset.runFind) {
@@ -1661,7 +1719,7 @@ document.addEventListener("click", async (e) => {
       toast(r.mode === "local" ? (r.written ? "Always-on lessons are in CLAUDE.local.md at the root of this repo, and kept up to date." : "Turned on, but secondnature couldn't find this repo's folder. It writes the file the next time you work here.") : "Took muninn's lessons out of CLAUDE.local.md. Anything else in the file is left as it was."); return;
     }
     if (el.dataset.scan !== undefined) { await startScan(el); return; }
-    if (el.dataset.repo) { week = null; repo = el.dataset.repo; open = null; showAll = false; runPage = null; await refresh(); window.scrollTo(0, 0); return; }
+    if (el.dataset.repo) { week = null; repo = el.dataset.repo; open = null; sel = null; runPage = null; await refresh(); window.scrollTo(0, 0); return; }
     if (el.dataset.replay !== undefined) {
       const box = el.closest(".detail"); const li = el.closest("li[data-id]");
       const l = [...data.suggested, ...data.kept].find((x) => x.id === li?.dataset.id);
@@ -1687,9 +1745,9 @@ document.addEventListener("click", async (e) => {
         if (route === "keyword" && !kws.trim()) { toast("Add a word, or pick another option."); return; }
         body = { id: l.id, action: "keep", text: box.querySelector("[data-f=text]").value, route, keywords: kws, ...whereBody(box) };
       }
-      el.disabled = true; await api("/api/decide", body); open = null; toast("Kept. Agents are told it from their next session."); await refresh(); return;
+      el.disabled = true; await api("/api/decide", body); open = null; sel = null; toast("Kept. Agents are told it from their next session."); await refresh(); return;
     }
-    if (el.dataset.dismiss) { el.disabled = true; await api("/api/decide", { id: el.dataset.dismiss, action: "reject" }); toast("secondnature won't suggest that again."); await refresh(); return; }
+    if (el.dataset.dismiss) { el.disabled = true; await api("/api/decide", { id: el.dataset.dismiss, action: "reject" }); sel = null; toast("Not kept. secondnature won't suggest that again."); await refresh(); return; }
     if (el.dataset.toggle) {
       const l = data.kept.find((x) => x.id === el.dataset.toggle); const turnOff = !l.off;
       el.setAttribute("aria-checked", String(!turnOff));
@@ -1724,7 +1782,7 @@ document.addEventListener("change", (e) => {
     return;
   }
   if (e.target.id === "histRoutine") { hist.routine = e.target.checked; $("#histList").innerHTML = histList(); return; }
-  if (e.target.id === "repo") { repo = e.target.value; runPage = null; if (!repo && tab === "plan") tab = null; week = null; if (!asking) { askThread = []; askThreadId = null; } open = null; showAll = false; planBranch = null; refresh(); }
+  if (e.target.id === "repo") { repo = e.target.value; runPage = null; if (!repo && tab === "plan") tab = null; week = null; if (!asking) { askThread = []; askThreadId = null; } open = null; sel = null; planBranch = null; refresh(); }
   if (e.target.id === "planBranch") { planBranch = e.target.value; planEdit = null; Object.assign(hist, { area: "All", q: "", open: {}, limit: 8 }); refresh(); }
 });
 refresh().catch((e) => { $("#main").innerHTML = `<p class="lead">${esc(e.message)}</p>`; });
