@@ -3,7 +3,7 @@ import { createInterface, type Interface } from "node:readline/promises";
 import { settings } from "../config.js";
 import { cosine } from "../embed/model.js";
 import { pickToShow } from "../learn/pipeline.js";
-import { combine, decide, getLesson, keywordsInUse, lessonsForKeyword, lessonVectors, listLessons, markShown, type Lesson } from "../store/lessons.js";
+import { addToOlder, combine, decide, getLesson, keywordsInUse, lessonsForKeyword, lessonVectors, listLessons, markShown, type Lesson } from "../store/lessons.js";
 
 const STOP = new Set(["about", "after", "always", "before", "because", "never", "should", "their", "there", "these", "those", "using", "which", "would", "could", "answer", "answers", "agent", "lesson", "first", "other", "while", "without", "instead", "every", "where"]);
 /** A keyword the engineer would likely type for this lesson: a command or path in backticks, or its most specific word. */
@@ -35,7 +35,8 @@ const HOW = `
 
 export async function similar(db: Client, l: Lesson): Promise<{ lesson: Lesson; score: number } | null> {
   if (!l.repo_id) return null;
-  const all = await lessonVectors(db, l.repo_id);
+  // Kept lessons told in every repo count too, wherever they were learned: a suggestion here can repeat one from another repo.
+  const all = await lessonVectors(db, l.repo_id, { withGlobal: true });
   const me = all.find((x) => x.id === l.id)?.vector;
   if (!me) return null;
   let best: { id: string; score: number } | null = null;
@@ -123,8 +124,15 @@ export async function review(db: Client, repo: string | null, lessons?: Lesson[]
     await markShown(db, l.id);
     const sim = await similar(db, l);
     if (sim) console.log(`  Similar to a ${sim.lesson.status} lesson (${sim.lesson.id.slice(0, 8)}):\n    "${sim.lesson.text}"`);
-    const a = (await rl.question(`  (k)eep, (e)dit, ${sim ? "(c)ombine, " : ""}(r)eject, (l)ater? `)).trim().toLowerCase();
+    if (sim) console.log(`  (a)dd to that lesson: it takes this one's point and keeps where it's told (${sim.lesson.scope === "global" ? "every repo" : "this repo"}).`);
+    const a = (await rl.question(`  (k)eep, (e)dit, ${sim ? "(a)dd to that lesson, (c)ombine, " : ""}(r)eject, (l)ater? `)).trim().toLowerCase();
     if (a.startsWith("r")) { await decide(db, l.id, { status: "rejected" }); continue; }
+    if (a.startsWith("a") && sim) {
+      const t = (await rl.question("  That lesson's new wording (Enter keeps its words and just adds this one's quotes): ")).trim() || undefined;
+      await addToOlder(db, l.id, sim.lesson.id, t);
+      console.log("  Added. The older lesson is told as before, and this suggestion is gone from your list.");
+      continue;
+    }
     let text: string | undefined;
     if (a.startsWith("c") && sim) {
       text = (await rl.question("  Combined text (Enter keeps this lesson's text): ")).trim() || undefined;

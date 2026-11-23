@@ -547,6 +547,7 @@ function rememberPick() {
   history.replaceState(null, "", u);
 }
 let open = null; // the id of the row opened for editing
+let folding = null; // { id, into, text, drafted }: a suggestion being added to the older lesson it repeats
 let openQuery = null; // the agent question opened in "What agents asked", to show what it got back
 let data = null;
 let planEdit = null; // the plan item being edited: an id, "goal", or "new"
@@ -1546,6 +1547,28 @@ function lessonListRow(l, tabKey) {
       <span class="ltext">${esc(clip(l.plain || l.text, 160))}</span>
       ${st ? `<span class="status ${st.cls}">${esc(st.word)}</span>` : ""}</button></li>`;
 }
+/** Where an older lesson is told, in words: every repo, or one. */
+const toldWhere = (o) => (o.scope === "global" ? "every repo" : o.repo_short || "this repo");
+/**
+ * A suggestion close to an older lesson: offer to add it to that lesson instead of keeping two.
+ * The older lesson keeps where it's told, so a change to one told in every repo reaches every repo.
+ */
+function similarBox(l) {
+  const o = l.similar; const kept = o.status === "live";
+  const what = kept ? `Looks close to a lesson you kept, told to agents in ${esc(toldWhere(o))}` : "Looks close to another suggestion waiting here";
+  if (folding?.id !== l.id) return `<div class="similar"><span>${what}: “${esc(clip(o.plain || o.text, 160))}”</span>
+      <span class="sub" style="font-size:13px">Adding this to it keeps one lesson instead of two. Keep this one on its own instead if it should differ, for example to apply in only one repo.</span>
+      <button class="btn2" data-fold="${esc(l.id)}">Add this to that lesson</button></div>`;
+  const wide = o.scope === "global";
+  return `<div class="similar detail" style="flex-direction:column;align-items:stretch">
+      <label for="fold-${esc(l.id)}">${kept ? "That lesson would now say" : "That suggestion would now say"}</label>
+      ${folding.text === null ? `<p class="sub"><span class="spin" aria-hidden="true" style="display:inline-block;vertical-align:-2px"></span> Your Claude is drafting the combined wording…</p>`
+        : `<textarea id="fold-${esc(l.id)}" rows="4" data-f="foldtext">${esc(folding.text)}</textarea>
+      <span class="sub" style="font-size:13px">${folding.different ? "Your Claude thinks these two are about different things, so keeping this one on its own may fit better. This is the older lesson's wording, unchanged." : folding.drafted ? "Drafted by your Claude from both lessons. Edit it as you like." : "This is the older lesson's wording. Add the new point yourself, or save as is to keep its words."}
+        ${wide ? `That lesson is told in every repo, so this change reaches every repo. If the new point only matters in ${esc(short(l.repo_id || repo))}, cancel and keep this one on its own for that repo.` : `That lesson stays told in ${esc(toldWhere(o))} only.`}</span>
+      <div class="btns"><button class="btn primary" data-fold-save="${esc(l.id)}">Update that lesson</button><button class="btn" data-fold-cancel>Cancel</button></div>`}
+    </div>`;
+}
 function lessonPane(l, tabKey) {
   const kept = tabKey !== "review";
   const editing = open === l.id;
@@ -1563,14 +1586,14 @@ function lessonPane(l, tabKey) {
         ${l.plain && l.plain !== l.text ? `<p class="sub" style="font-size:13px">Agents are told: ${esc(l.text)}</p>` : ""}
         ${l.why ? `<p><strong style="color:var(--ink)">Why:</strong> ${esc(l.why)}</p>` : l.worth ? `<p>${esc(l.worth)}</p>` : ""}
       </div>
-      ${l.similar && !kept ? `<div class="similar"><span>Nearly the same as a lesson you ${l.similar.status === "live" ? "kept" : "were shown"}: “${esc(clip(l.similar.plain || l.similar.text, 140))}”</span></div>` : ""}
+      ${l.similar && !kept ? similarBox(l) : ""}
       ${editing ? editForm(l, kept) : `<div class="facts"><div><span class="sub">Who is told</span><span>${esc(who)}</span></div><div><span class="sub">When they're told</span><span>${esc(when)}</span></div></div>`}
       ${ev.length ? `<div style="display:flex;flex-direction:column;gap:8px"><h3 class="label">Where it came from · ${(l.evidence || []).length}</h3>
         ${ev.map((e) => `<div class="quote"><span class="qmeta"><span class="mono" style="font-size:12px">${esc(shortDate(e.seen_at))}</span><span>${esc(TOOL_NAMES[e.tool] || e.tool)}</span></span><span><strong>${esc(whoSaid(l, e.quote))}:</strong> ${esc(clip(e.quote.replace(/^\$ /, ""), 400))}</span></div>`).join("")}
         <span class="sub">Quotes are stored redacted. Text you wrap in &lt;private&gt; is never kept.</span></div>` : ""}
       ${kept ? `<div class="toldbox"><span>${last ? `Last told ${esc(ago(last))}.` : "Not told yet."}${finds ? ` Found by agents searching ${finds} time${finds === 1 ? "" : "s"}.` : ""}</span>${st ? `<span class="sub" style="font-size:13px">${esc(st.line)}</span>` : ""}
         ${st?.fix ? `<button class="fix" data-fix="${esc(l.id)}">Tell agents every session</button>` : ""}</div>` : ""}
-      ${editing ? "" : `<div class="lactions">${kept
+      ${editing || folding?.id === l.id ? "" : `<div class="lactions">${kept
         ? `<button class="switchbtn" role="switch" aria-checked="${!l.off}" data-toggle="${esc(l.id)}"><span class="switch" aria-hidden="true" aria-checked="${!l.off}"></span>${l.off ? "Off: agents aren't told" : "On: agents are told"}</button>
            <button class="btn2 big" data-open="${esc(l.id)}">Edit</button><button class="btn2 big" data-remove="${esc(l.id)}">Remove</button>`
         : `<button class="btnlink" data-add="${esc(l.id)}">Keep</button><button class="btn2 big" data-open="${esc(l.id)}">Edit</button><button class="btn2 big" data-dismiss="${esc(l.id)}">Don't keep</button>`}</div>`}
@@ -1985,7 +2008,7 @@ document.addEventListener("click", async (e) => {
     if (el.dataset.purge !== undefined) { purgeAsk = true; draw(); return; }
     if (el.dataset.purgeNo !== undefined) { purgeAsk = false; draw(); return; }
     if (el.dataset.themePick) { document.documentElement.dataset.theme = el.dataset.themePick; try { localStorage.setItem("theme", el.dataset.themePick); } catch { /* kept until reload */ } drawSide(); return; }
-    if (el.dataset.open) { open = open === el.dataset.open ? null : el.dataset.open; draw(); return; }
+    if (el.dataset.open) { open = open === el.dataset.open ? null : el.dataset.open; folding = null; draw(); return; }
     if (el.dataset.frStart !== undefined) { el.disabled = true; await api("/api/firstrun", {}); frStep = 2; await loadFirstRun(); draw(); window.scrollTo(0, 0); return; }
     if (el.dataset.frGo) { frStep = Number(el.dataset.frGo); fr = null; draw(); window.scrollTo(0, 0); return; }
     if (el.dataset.frKeep || el.dataset.frSkip) {
@@ -2152,6 +2175,20 @@ document.addEventListener("click", async (e) => {
         body = { id: l.id, action: "keep", text: box.querySelector("[data-f=text]").value, route, keywords: kws, ...whereBody(box) };
       }
       el.disabled = true; await api("/api/decide", body); open = null; sel = null; toast("Kept. Agents are told it from their next session."); await refresh(); return;
+    }
+    if (el.dataset.fold) {
+      const l = data.suggested.find((x) => x.id === el.dataset.fold); if (!l?.similar) return;
+      const f = folding = { id: l.id, into: l.similar.id, text: null, drafted: false }; open = null; draw();
+      try { const r = await api("/api/fold-draft", { id: l.id, into: l.similar.id }); f.text = r.text; f.drafted = r.drafted; f.different = !!r.different; }
+      catch { f.text = l.similar.text; }
+      if (folding === f) draw(); return;
+    }
+    if (el.dataset.foldCancel !== undefined) { folding = null; draw(); return; }
+    if (el.dataset.foldSave) {
+      const text = el.closest(".similar").querySelector("[data-f=foldtext]").value.trim();
+      if (!text) { toast("Write what that lesson should say."); return; }
+      el.disabled = true; await api("/api/decide", { id: folding.id, action: "fold", into: folding.into, text });
+      folding = null; sel = null; toast("Updated the older lesson. Agents get the new wording from their next session."); await refresh(); return;
     }
     if (el.dataset.dismiss) { el.disabled = true; await api("/api/decide", { id: el.dataset.dismiss, action: "reject" }); sel = null; toast("Not kept. secondnature won't suggest that again."); await refresh(); return; }
     if (el.dataset.toggle) {

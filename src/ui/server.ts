@@ -25,7 +25,7 @@ import { lessonFileMode, setLessonFile } from "../deliver/local-file.js";
 import { apply, dismiss, listProposals, proposeInstructions, undo } from "../propose/index.js";
 import { repoIdentity } from "../repo/identity.js";
 import { openDb } from "../store/db.js";
-import { combine, decide, ensureRepo, getLesson, keywordsInUse, listLessons } from "../store/lessons.js";
+import { addToOlder, combine, decide, ensureRepo, getLesson, keywordsInUse, listLessons } from "../store/lessons.js";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -54,7 +54,7 @@ async function lessonDetail(db: Client, id: string) {
   const origin = await originOf(db, { id: l.id, source: l.source, signal: l.signal });
   // Files or folders the lesson names that are no longer in the repo: the lesson may be out of date.
   const missing = (await db.execute({ sql: "SELECT dst_id FROM links WHERE src_id=? AND rel='applies_to' AND how='missing'", args: [l.id] }).catch(() => ({ rows: [] }))).rows.map((r) => String(r.dst_id));
-  return { ...l, missing, worth: worthSentence(l as any, defaultRoute(l).route), preference: isPreference(l), defaults: defaultRoute(l), repo_short: shortRepo(l.repo_id), origin, evidence, triggers, suggested, similar: sim ? { id: sim.lesson.id, text: sim.lesson.text, plain: sim.lesson.plain, status: sim.lesson.status, score: sim.score } : null };
+  return { ...l, missing, worth: worthSentence(l as any, defaultRoute(l).route), preference: isPreference(l), defaults: defaultRoute(l), repo_short: shortRepo(l.repo_id), origin, evidence, triggers, suggested, similar: sim ? { id: sim.lesson.id, text: sim.lesson.text, plain: sim.lesson.plain, status: sim.lesson.status, score: sim.score, scope: sim.lesson.scope, repo_short: shortRepo(sim.lesson.repo_id), role: sim.lesson.role } : null };
 }
 
 /** Your first name for the sidebar: git's user.name, else your login on this Mac. */
@@ -85,8 +85,21 @@ const routes: Record<string, Handler> = {
     return out;
   },
   "GET /api/keywords": async (db, q) => keywordsInUse(db, q.get("repo") || null),
+  // A first wording for adding a suggestion to the older lesson it repeats. Nothing changes until the engineer saves it.
+  "POST /api/fold-draft": async (db, _q, b) => {
+    const l = await getLesson(db, String(b.id ?? "")); const older = await getLesson(db, String(b.into ?? ""));
+    if (!l || !older) throw new Error("No lesson with that id.");
+    const runner = pickRunner("background");
+    if (!runner?.runAsync) return { text: older.text, drafted: false };
+    const { buildFoldPrompt, parseFold } = await import("../learn/fold.js");
+    try {
+      const text = parseFold(await runner.runAsync(buildFoldPrompt(older.text, l.text)), older.text); await saveUsage(db, runner, "lesson merge draft");
+      return text === null ? { text: older.text, drafted: false, different: true } : { text, drafted: text !== older.text };
+    }
+    catch { return { text: older.text, drafted: false }; }
+  },
   "POST /api/decide": async (db, _q, b) => {
-    const id = String(b.id ?? "");
+    let id = String(b.id ?? "");
     if (!(await getLesson(db, id))) throw new Error("No lesson with that id.");
     if (b.action === "reject") await decide(db, id, { status: "rejected" });
     else if (b.action === "retire") await decide(db, id, { status: "retired" });
@@ -111,6 +124,9 @@ const routes: Record<string, Handler> = {
     } else if (b.action === "combine") {
       await combine(db, id, String(b.other ?? ""), typeof b.text === "string" && b.text.trim() ? b.text.trim() : undefined);
       await decide(db, id, { status: "live", alwaysOn: b.route === "always", triggers: b.route === "keyword" ? String(b.keywords ?? "").toLowerCase().split(",").map((k: string) => k.trim()).filter(Boolean) : [] });
+    } else if (b.action === "fold") {
+      // Added to the older lesson it repeats: that lesson keeps where and when it's told, and is the one shown after.
+      id = await addToOlder(db, id, String(b.into ?? ""), typeof b.text === "string" && b.text.trim() ? b.text.trim() : undefined);
     } else if (b.action === "on" || b.action === "off") {
       // The switch: off keeps the lesson but stops agents being told it.
       await decide(db, id, { off: b.action === "off" });
