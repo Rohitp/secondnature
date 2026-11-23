@@ -244,6 +244,38 @@ const routes: Record<string, Handler> = {
     return { ...t, turns: await Promise.all(t.turns.map(async (u) => ({ ...u, sources: await withLinks(db, u.sources) }))) };
   },
   "POST /api/thread-delete": async (db, _q, b) => { await deleteThread(db, String(b.id ?? "")); return { ok: true }; },
+  // "Is it helping?": each kept lesson's outcome, output trims, and repeated problems by day for the chart.
+  "GET /api/impact": async (db, q) => {
+    const repo = q.get("repo") || null;
+    const { proofData, headline, PROOF_MIN_SESSIONS } = await import("../learn/proof.js");
+    const proof = await proofData(db, repo, (await import("../logs/discover.js")).scanLogs().sessions);
+    const DAYS = 14; const since = new Date(Date.now() - DAYS * 86_400_000).toISOString().slice(0, 10);
+    const inRepo = repo ? "AND (l.repo_id=? OR l.scope='global')" : "";
+    const args = repo ? [since, repo] : [since];
+    // Sessions a problem turned up in, per day: problems a kept lesson covers, and the rest.
+    const ev = (await db.execute({ sql: `SELECT substr(e.seen_at,1,10) day, l.status='live' kept, count(DISTINCT e.session||e.lesson_id) n FROM evidence e JOIN lessons l ON l.id=e.lesson_id WHERE substr(e.seen_at,1,10)>=? ${inRepo} AND l.status IN ('live','proposed','retired') GROUP BY 1,2`, args })).rows;
+    const keptOn = (await db.execute({ sql: `SELECT substr(coalesce(l.reviewed_at,l.created_at),1,10) day, count(*) n FROM lessons l WHERE l.status='live' AND substr(coalesce(l.reviewed_at,l.created_at),1,10)>=? ${inRepo} GROUP BY 1`, args })).rows;
+    const days = [...Array(DAYS)].map((_, i) => new Date(Date.now() - (DAYS - 1 - i) * 86_400_000).toISOString().slice(0, 10)).map((day) => ({
+      day,
+      covered: Number(ev.find((r) => r.day === day && Number(r.kept))?.n ?? 0),
+      other: Number(ev.find((r) => r.day === day && !Number(r.kept))?.n ?? 0),
+      kept: Number(keptOn.find((r) => r.day === day)?.n ?? 0),
+    }));
+    return { headline: headline(proof), minSessions: PROOF_MIN_SESSIONS, counts: proof.counts, lessons: proof.lessons.map(({ id, text, keptAt, before, after, sent, sessionsSince, outcome, verdict, stale, fix }) => ({ id, text, keptAt, before, after, sent, sessionsSince, outcome, verdict, stale, fix })), fixes: proof.report.fixes, days };
+  },
+  // "Make a page to send someone": the same one-page report as muninn report --page, shown in Finder.
+  "POST /api/proof-page": async (db, _q, b) => {
+    const repo = typeof b.repo === "string" && b.repo ? b.repo : null;
+    const { proofData, proofHtml } = await import("../learn/proof.js");
+    const { home } = await import("../config.js");
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    const proof = await proofData(db, repo, (await import("../logs/discover.js")).scanLogs().sessions);
+    const file = join(home(), "reports", `${(repo ?? "all-repos").split("/").pop()}-${proof.at.slice(0, 10)}.html`);
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, proofHtml(proof));
+    if (process.platform === "darwin") spawn("open", ["-R", file], { stdio: "ignore", detached: true }).unref();
+    return { file };
+  },
   // Which coding tools are set up to be told, for Home's "Connected tools".
   "GET /api/tools": async (db, q) => {
     const { installed, codexPresent } = await import("../commands/install.js");
