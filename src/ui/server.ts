@@ -244,7 +244,22 @@ const routes: Record<string, Handler> = {
     return { ...t, turns: await Promise.all(t.turns.map(async (u) => ({ ...u, sources: await withLinks(db, u.sources) }))) };
   },
   "POST /api/thread-delete": async (db, _q, b) => { await deleteThread(db, String(b.id ?? "")); return { ok: true }; },
-  "GET /api/settings": async () => ({ maxPerDelivery: settings().maxPerDelivery }),
+  // Which coding tools are set up to be told, for Home's "Connected tools".
+  "GET /api/tools": async (db, q) => {
+    const { installed, codexPresent } = await import("../commands/install.js");
+    const repo = q.get("repo");
+    const rules = repo ? await (await import("../deliver/auto-rules.js")).rulesState(db, repo).catch(() => null) : null;
+    const out: { id: string; name: string; on: boolean; state: string }[] = [];
+    const cc = installed("claude-code").length > 0;
+    out.push({ id: "claude-code", name: "Claude Code", on: cc, state: cc ? "Told by hooks" : "Not set up. Run muninn setup" });
+    if (rules) {
+      out.push({ id: "cursor", name: "Cursor", on: rules.cursor.on, state: rules.cursor.on ? "Told by rules files" : "Off in this repo" });
+      out.push({ id: "antigravity", name: "Antigravity", on: rules.antigravity.on, state: rules.antigravity.on ? "Told by rules and hooks" : "Off in this repo" });
+    }
+    if (codexPresent()) { const on = installed("codex").length > 0; out.push({ id: "codex", name: "Codex", on, state: on ? "Told by hooks" : "Not set up. Run muninn setup" }); }
+    return out;
+  },
+  "GET /api/settings": async () =>({ maxPerDelivery: settings().maxPerDelivery }),
   "GET /api/version": async () => ({ boot: BOOT, page: pageHash() }),
   // Scans: when the last one finished, whether one is running, and "Check now".
   "GET /api/scan": async (db) => ({ running: scanRunning(), needsModel: !modelCached(), lastLearn: String((await db.execute("SELECT value FROM meta WHERE key='last_learn'")).rows[0]?.value ?? "") || null }),
