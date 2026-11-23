@@ -103,36 +103,69 @@ claude plugin install muninn-panel@muninn
 
 ## Install
 
-You need **Node 22 or later** (check with `node --version`).
+One command sets it up. It finds your coding tools, reads your past sessions, and shows you what you've been teaching your agents. About 3 minutes.
+
+**One command** (recommended): downloads, installs and sets up in one go.
+
+```sh
+npx secondnature setup
+```
+
+Afterwards the command is `muninn`. Run it with nothing after it to see what needs you.
+
+**Install, then set up**: installs the command first, so you can run it any time.
 
 ```sh
 npm install -g secondnature
-muninn setup        # connects every coding tool on this machine, scans your past sessions, opens the page
-```
-
-`muninn setup` asks once, then connects whatever it finds: hooks in Claude Code, Codex and Antigravity; muninn's plugin in Claude Code (its panel, and its MCP server); the MCP server in the Claude desktop app, Cursor, Codex and Antigravity; and on a Mac a background check every few hours. If something drops off later (a settings file rewritten, a new tool installed), muninn puts it back during its next scan, or run `muninn connect` to check now. After `muninn uninstall`, it stays out until you run `muninn connect` yourself.
-
-From source instead: the repo pins its pnpm version, and `corepack enable` sets it up.
-
-```sh
-git clone https://github.com/Rohitp/secondnature.git && cd secondnature
-corepack enable
-pnpm install && pnpm build
-npm link            # puts `muninn` and `secondnature` on your PATH
 muninn setup
 ```
 
-After that you don't need any commands. muninn checks for new lessons on its own after your sessions end, and the page has a **Check now** button. On a Mac, `muninn schedule on` adds a background job that also checks every few hours, for days spent only in Antigravity or Cursor.
+`secondnature` and `muninn` are the same command. Use whichever you like.
+
+**From source**, for contributors. Needs git and pnpm (`corepack enable` sets it up).
+
+```sh
+git clone https://github.com/Rohitp/secondnature.git && cd secondnature
+corepack enable && pnpm install && pnpm build
+npm link && muninn setup
+```
+
+`npm link` puts the `muninn` command on your PATH.
+
+**You need**
+
+- A Mac or Linux
+- Node 22 or later. Check with `node --version`
+- Claude Code (or Codex) signed in, to write lessons
+
+**It works with** Claude Code (in the terminal and the desktop app), Cursor and Antigravity. Codex too, though it isn't checked live yet.
+
+**It stays on your machine.** No account and no server. The only things sent out are redacted excerpts, to your own Claude, to write lessons.
+
+### What setup does
+
+1. **Finds your tools.** You untick any you want left alone: they get no hooks or rules files, and their logs aren't read.
+2. **Says what it will do.** What it reads, sends and changes. Nothing happens until you say yes.
+3. **Reads your sessions.** A few minutes. You can close the window; it reads them again on its own later.
+4. **Shows what you've taught.** The review page opens. Keep what's useful, one click each.
+
+After that you don't need any commands. secondnature reads new sessions on its own after they end, and on a Mac a background check runs every few hours too (`muninn schedule off` stops it). If something drops off later (a settings file rewritten, a new tool installed), it's put back during the next scan, or run `muninn connect` to check now.
+
+### Changed your mind?
+
+`muninn uninstall` removes the hooks and keeps your lessons; `muninn connect` puts them back. `muninn purge --yes` deletes everything secondnature kept.
 
 ## Commands
 
 | Command | What it does |
 |---|---|
+| `muninn` | What needs you, the week in a sentence, and the everyday commands |
 | `muninn setup` | Set everything up and take a first look |
 | `muninn connect` | Connect, or re-check, every coding tool on this machine |
 | `muninn ui` | Open the page |
-| `muninn learn` | Look for new lessons now (also runs on its own) |
-| `muninn ask "question"` | Search what you've kept |
+| `muninn learn` | Look for new lessons now (also runs on its own); `--verbose` for detail |
+| `muninn ask "question"` | An answer from your lessons, plans and past sessions, with sources; `--more` for a follow-up |
+| `muninn plan` | Where this branch stands: goal, next steps, decisions |
 | `muninn mcp install` | Ask about your work from any chat with Claude |
 | `muninn related "what"` | What a decision or piece of work led to, what replaced it, the sessions and commits behind it, the files it changed, and what it changed outside the repo |
 | `muninn link` / `unlink "decision" "work"` | Say a decision did, or didn't, lead to some work; muninn keeps your choice |
@@ -150,7 +183,7 @@ After that you don't need any commands. muninn checks for new lessons on its own
 | `muninn pause` / `resume` | Stop or restart muninn |
 | `muninn uninstall` | Remove muninn's hooks. Your lessons are kept |
 
-Run `muninn` with no arguments for the full list.
+Run `muninn help` for the full list. Output follows a few rules: the answer comes first, anything you need to do ends with `Next:` and the exact command, every mark (✓ ! ✗ –) comes with words, and `NO_COLOR=1` turns colour off.
 
 ## Status
 
