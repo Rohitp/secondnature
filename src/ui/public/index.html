@@ -19,12 +19,24 @@
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --sidebar-width: 232px; --radius-sm: 5px; --radius-md: 8px; --radius-lg: 12px;
 }
+/* Themes: the OS picks light or dark until you choose one in the sidebar; your choice is kept in this browser. */
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #0f1115; --sidebar: #15181d; --group: #1a1d23; --fill: #22262e; --hover: #20242b; --line: #2a2e36; --line-soft: #23272e; --line-strong: #3b414b;
+  :root:not([data-theme]) { --bg: #0f1115; --sidebar: #15181d; --group: #1a1d23; --fill: #22262e; --hover: #20242b; --line: #2a2e36; --line-soft: #23272e; --line-strong: #3b414b;
     --ink: #eceef2; --body: #c5cad3; --muted: #a0a7b2; --faint: #8d94a0;
     --link: #8fa8ff; --link-hover: #b4c5ff; --chip: #1f2a4d; --chip-ink: #b4c5ff; --on: #58c88a; --on-bg: #13281c; --on-line: #2a5a3d; --off: #3b414b;
     --warn: #ffb27a; --warn-bg: #3a2410; --warn-line: #5c3a1c; --warn-dot: #f59e0b; --on-warn: #ffb27a; --caution: #e8b54a; --caution-bg: #2e2410;
     --diff-add: #6cd49a; --diff-del: #ff8a80; --primary-hover: #d6d9df; color-scheme: dark; }
+}
+:root[data-theme="dark"] { --bg: #0f1115; --sidebar: #15181d; --group: #1a1d23; --fill: #22262e; --hover: #20242b; --line: #2a2e36; --line-soft: #23272e; --line-strong: #3b414b;
+    --ink: #eceef2; --body: #c5cad3; --muted: #a0a7b2; --faint: #8d94a0;
+    --link: #8fa8ff; --link-hover: #b4c5ff; --chip: #1f2a4d; --chip-ink: #b4c5ff; --on: #58c88a; --on-bg: #13281c; --on-line: #2a5a3d; --off: #3b414b;
+    --warn: #ffb27a; --warn-bg: #3a2410; --warn-line: #5c3a1c; --warn-dot: #f59e0b; --on-warn: #ffb27a; --caution: #e8b54a; --caution-bg: #2e2410;
+    --diff-add: #6cd49a; --diff-del: #ff8a80; --primary-hover: #d6d9df; color-scheme: dark; }
+:root[data-theme="solarized"] { --bg: #002b36; --sidebar: #073642; --group: #073642; --fill: #0f4552; --hover: #0e4350; --line: #174d5a; --line-soft: #0f4552; --line-strong: #3b6a74;
+  --ink: #fdf6e3; --body: #eee8d5; --muted: #93a1a1; --faint: #93a1a1;
+  --link: #62a7d3; --link-hover: #b6ced4; --chip: #0d455c; --chip-ink: #b6ced4; --on: #b5c97a; --on-bg: #1f4a33; --on-line: #3e6a4c; --off: #3b6a74;
+  --warn: #decd99; --warn-bg: #3a3a1c; --warn-line: #505926; --warn-dot: #c6a540; --on-warn: #decd99; --caution: #decd99; --caution-bg: #2e3a1e;
+  --diff-add: #b5c97a; --diff-del: #e9b5a7; --primary-hover: #eee8d5; color-scheme: dark; }
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; } /* a class that sets display mustn't bring back something hidden */
@@ -429,7 +441,7 @@ pre code { background: none; padding: 0; }
 .card .hist { border-top: 0; }
 @media (max-width: 600px) { .hodl { grid-template-columns: 1fr; } .hodl dd { margin-bottom: 6px; } }
 /* First run: a plain header, a stepper, and one step at a time in a narrow column. */
-body.firstrun .side { display: none; }
+body.firstrun .side, body.firstrun .topbar { display: none !important; }
 body.firstrun .shell { grid-template-columns: 1fr; }
 body.firstrun main { padding: 0; }
 .frbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 32px; background: var(--group); border-bottom: 1px solid var(--line); }
@@ -457,10 +469,38 @@ body.firstrun main { padding: 0; }
 .frlesson { gap: 8px; } .frtext { font-size: 17px; font-weight: 600; color: var(--ink) !important; overflow-wrap: anywhere; }
 .frkept { color: var(--on); }
 @media (max-width: 600px) { .frtool { flex-wrap: wrap; } .frhow { text-align: left; max-width: none; flex-basis: 100%; padding-left: 34px; } .frhead h1 { font-size: 24px; } }
+/* The sidebar's foot: who you are and the theme. */
+.who { display: flex; align-items: center; gap: 8px; padding: 8px 10px 0; }
+.avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--chip); color: var(--chip-ink); display: grid; place-items: center; font-size: 12px; font-weight: 600; flex: none; }
+.who .name { font-size: 13px; color: var(--body); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.themes { display: flex; padding: 2px; border-radius: 15px; background: var(--hover); flex: none; }
+.themes button { width: 28px; height: 28px; border: 0; border-radius: 50%; background: none; color: var(--muted); cursor: pointer; display: grid; place-items: center; padding: 0; }
+.themes button[aria-pressed="true"] { background: var(--group); color: var(--ink); box-shadow: 0 1px 2px rgba(20,23,31,.18); }
+/* On a phone the sidebar becomes a bar along the top: the mark, the repo, then the sections as pills you can scroll. */
+.topbar { display: none; }
+@media (max-width: 760px) {
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .side { display: none; }
+  .topbar { display: flex; flex-direction: column; gap: 6px; padding: 6px 10px; background: var(--sidebar); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 4; }
+  .topbar .r1 { display: flex; align-items: center; gap: 10px; }
+  .topbar .r1 .repopick { flex: 1; margin: 0; min-height: 40px; }
+  .topbar nav { display: flex; gap: 4px; overflow-x: auto; min-width: 0; }
+  .topbar nav button { flex: none; min-height: 44px; padding: 0 12px; border: 0; border-radius: 22px; background: none; color: var(--body); cursor: pointer; }
+  .topbar nav button[aria-current="page"] { background: var(--chip); color: var(--chip-ink); font-weight: 600; }
+  main { padding: 16px 14px 40px; }
+}
+/* Motion: short and quiet. A page rises in when you open it; buttons ease their colours. None if you've asked for less motion. */
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+main.enter .grid > * { animation: rise .26s cubic-bezier(.2,.8,.2,1) both; }
+main.enter .grid > *:nth-child(2) { animation-delay: .03s; } main.enter .grid > *:nth-child(3) { animation-delay: .06s; } main.enter .grid > *:nth-child(n+4) { animation-delay: .09s; }
+button, a, input, select, textarea { transition: background-color .14s ease, color .14s ease, border-color .14s ease, box-shadow .14s ease; }
+:root { transition: background-color .25s ease; }
+@media (prefers-reduced-motion: reduce) { main.enter .grid > * { animation: none; } button, a, input, select, textarea, :root { transition: none; } }
 </style>
+<script>try { const t = localStorage.getItem("theme"); if (t) document.documentElement.dataset.theme = t; } catch { /* the OS decides */ }</script>
 </head>
 <body>
-<div class="shell"><aside id="side" class="side" aria-label="secondnature"></aside><main id="main" aria-live="polite"></main></div>
+<div class="shell"><header id="topbar" class="topbar"></header><aside id="side" class="side" aria-label="secondnature"></aside><main id="main" aria-live="polite"></main></div>
 <aside id="askPanel" class="askpanel" aria-label="Ask secondnature" hidden></aside>
 <div class="toast" id="toast" role="status"></div>
 <script>
@@ -821,7 +861,7 @@ async function load() {
     api("/api/repos"), api("/api/lessons?" + q({ repo, status: "proposed" })), api("/api/lessons?" + q({ repo, status: "live" })), api("/api/home?" + q({ repo })), api("/api/scan"),
   ]);
   const [plan, memory, lessonFile, proposals, threads, askSuggestions, rules] = await Promise.all([repo ? api("/api/plan?" + q({ repo, branch: planBranch })) : null, api("/api/memory?" + q({ repo })), repo ? api("/api/lesson-file?" + q({ repo })) : null, api("/api/proposals?" + q({ repo })), api("/api/threads?" + q({ repo })), api("/api/ask-suggestions?" + q({ repo })).catch(() => []), repo ? api("/api/rules?" + q({ repo })).catch(() => null) : null]);
-  const schedule = await api("/api/schedule").catch(() => null);
+  const [schedule, prefs] = await Promise.all([api("/api/schedule").catch(() => null), api("/api/settings").catch(() => ({}))]);
   // Home: where the last session left off, and which coding tools are set up to be told.
   const [handoffs, tools] = await Promise.all([api("/api/handoffs?" + q({ repo })).catch(() => []), api("/api/tools?" + q({ repo })).catch(() => [])]);
   // Autonomous runs come from the data side's /api/runs; until it's there, the section stays hidden.
@@ -833,7 +873,7 @@ async function load() {
   const asked = await api("/api/queries?" + q({ repo, days: 7 })).catch(() => ({ queries: [], lessonFinds: {} }));
   // What secondnature's hooks told agents this week, session by session, and what it held back.
   const told = await api("/api/told?" + q({ repo, days: 7 })).catch(() => null);
-  data = { repos, suggested, kept, home, scan, plan, memory, lessonFile, proposals, threads, askSuggestions, rules, schedule, runs: Array.isArray(runs) ? runs : [], runInfo, effects: Array.isArray(effects) ? effects : [], queries: (asked.queries || []).filter((x) => x.tool !== "terminal"), lessonFinds: asked.lessonFinds || {}, lessonText: asked.lessonText || {}, told, handoffs: Array.isArray(handoffs) ? handoffs : [], tools: Array.isArray(tools) ? tools : [] };
+  data = { who: prefs.who || null, repos, suggested, kept, home, scan, plan, memory, lessonFile, proposals, threads, askSuggestions, rules, schedule, runs: Array.isArray(runs) ? runs : [], runInfo, effects: Array.isArray(effects) ? effects : [], queries: (asked.queries || []).filter((x) => x.tool !== "terminal"), lessonFinds: asked.lessonFinds || {}, lessonText: asked.lessonText || {}, told, handoffs: Array.isArray(handoffs) ? handoffs : [], tools: Array.isArray(tools) ? tools : [] };
 }
 
 /* Autonomous runs: sessions working together in a repo, each in a role (subagents, or agents in their own worktrees),
@@ -1219,15 +1259,20 @@ const ICON = {
   settings: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9M15 5v4M9 15v4"/>',
 };
 const MARK = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12a7 7 0 1 1-2.05-4.95"/><path d="M19 4v4h-4"/></svg>';
+/** The repo picker: in the sidebar, and in the top bar on a phone. */
+const repoPick = (id) => { const { repos } = data; const othersWaiting = repo ? repos.some((r) => r.id !== repo && r.waiting) : false;
+  return `<div class="repopick"><label for="${id}"><small>Repo${othersWaiting ? ' · <span style="color:var(--warn)">others waiting</span>' : ""}</small></label>
+      <select id="${id}" data-repo-pick><option value="" ${repo ? "" : "selected"}>All repos</option>${[...new Set([HERE, repo].filter((r) => r && !repos.some((x) => x.id === r)))].map((r) => `<option value="${esc(r)}" ${r === repo ? "selected" : ""}>${esc(short(r))}${r === HERE ? " (this folder)" : ""}</option>`).join("")}${repos.map((r) => `<option value="${esc(r.id)}" ${r.id === repo ? "selected" : ""}>${esc(short(r.id))}${r.waiting && r.id !== repo ? ` (${r.waiting} waiting)` : ""}</option>`).join("")}</select></div>`; };
+/* Light, dark or solarized: none picked follows the OS, and the picked one is kept in this browser. */
+const THEMES = [["light", "Light", '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'], ["dark", "Dark", '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>'], ["solarized", "Solarized", '<circle cx="12" cy="12" r="8"/><path d="M12 4v16" /><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/>']];
+const themeNow = () => document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 function drawSide() {
   const { repos } = data;
   const t = currentTab(); const n = waitingCount();
-  const othersWaiting = repo ? repos.some((r) => r.id !== repo && r.waiting) : false;
   const tabBtn = (id, label, extra = "") => `<button data-tab="${id}" ${t === id ? 'aria-current="page"' : ""}><span>${svg(ICON[id])}${label}</span>${extra}</button>`;
   $("#side").innerHTML = `
     <div class="brand"><span class="mark">${MARK}</span><span class="wordmark">secondnature</span></div>
-    <div class="repopick"><label for="repo"><small>Repo${othersWaiting ? ' · <span style="color:var(--warn)">others waiting</span>' : ""}</small></label>
-      <select id="repo"><option value="" ${repo ? "" : "selected"}>All repos</option>${[...new Set([HERE, repo].filter((r) => r && !repos.some((x) => x.id === r)))].map((r) => `<option value="${esc(r)}" ${r === repo ? "selected" : ""}>${esc(short(r))}${r === HERE ? " (this folder)" : ""}</option>`).join("")}${repos.map((r) => `<option value="${esc(r.id)}" ${r.id === repo ? "selected" : ""}>${esc(short(r.id))}${r.waiting && r.id !== repo ? ` (${r.waiting} waiting)` : ""}</option>`).join("")}</select></div>
+    ${repoPick("repo")}
     <nav class="nav" aria-label="Sections">
       ${tabBtn("home", "Home")}
       ${tabBtn("lessons", "Lessons", n ? `<span class="count">${n}</span>` : "")}
@@ -1239,11 +1284,18 @@ function drawSide() {
       <button class="btn ask" data-ask-open ${askOpen ? "hidden" : ""} style="all:unset;box-sizing:border-box;display:flex;align-items:center;gap:10px;min-height:44px;padding:0 10px;border-radius:8px;color:var(--link);font-weight:600;cursor:pointer">${svg('<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>')}Ask about ${repo ? esc(short(repo)) : "your repos"}</button>
       ${tabBtn("settings", "Settings")}
       <div class="sidenote"><span>${scanLine()}</span></div>
+      <div class="who">${data.who ? `<span class="avatar" aria-hidden="true">${esc(data.who[0].toUpperCase())}</span><span class="name">${esc(data.who)}</span>` : `<span class="name">On this Mac</span>`}
+        <div class="themes" role="group" aria-label="Colour theme">${THEMES.map(([id, label, d]) => `<button data-theme-pick="${id}" aria-pressed="${themeNow() === id}" aria-label="${label} theme" title="${label}">${svg(d, 15)}</button>`).join("")}</div></div>
     </div>`;
+  const pill = (id, label) => `<button data-tab="${id}" ${t === id ? 'aria-current="page"' : ""}>${label}${id === "lessons" && n ? ` · ${n}` : ""}</button>`;
+  $("#topbar").innerHTML = `<div class="r1"><span class="mark">${MARK}</span>${repoPick("repoTop")}</div>
+    <nav aria-label="Sections, compact">${pill("home", "Home")}${pill("lessons", "Lessons")}${repo ? pill("plan", "Plan") : ""}${pill("impact", "Is it helping?")}${pill("activity", "Activity")}${pill("settings", "Settings")}</nav>`;
 }
+let lastTab = null;
 function drawPage() {
   drawSide();
   const t = currentTab();
+  if (t !== lastTab) { lastTab = t; const m = $("#main"); m.classList.remove("enter"); void m.offsetWidth; m.classList.add("enter"); clearTimeout(m._enter); m._enter = setTimeout(() => m.classList.remove("enter"), 500); }
   document.body.classList.toggle("firstrun", t === "welcome");
   const body = t === "welcome" ? welcomeView() : t === "home" ? homeView() : t === "impact" ? impactView() : t === "lessons" ? lessonsView() : t === "plan" ? (repo && data.plan ? planSection() : lessonsView())
     : t === "activity" ? (runPage ? runPageView() : activityView()) : settingsView();
@@ -1808,6 +1860,7 @@ document.addEventListener("click", async (e) => {
   const el = e.target.closest("button"); if (!el) return;
   const li = el.closest("li[data-id]");
   try {
+    if (el.dataset.themePick) { document.documentElement.dataset.theme = el.dataset.themePick; try { localStorage.setItem("theme", el.dataset.themePick); } catch { /* kept until reload */ } drawSide(); return; }
     if (el.dataset.open) { open = open === el.dataset.open ? null : el.dataset.open; draw(); return; }
     if (el.dataset.frStart !== undefined) { el.disabled = true; await api("/api/firstrun", {}); frStep = 2; await loadFirstRun(); draw(); window.scrollTo(0, 0); return; }
     if (el.dataset.frGo) { frStep = Number(el.dataset.frGo); fr = null; draw(); window.scrollTo(0, 0); return; }
@@ -2011,7 +2064,7 @@ document.addEventListener("change", (e) => {
     return;
   }
   if (e.target.id === "histRoutine") { hist.routine = e.target.checked; $("#histList").innerHTML = histList(); return; }
-  if (e.target.id === "repo") { repo = e.target.value; impactFor = null; runPage = null; if (!repo && tab === "plan") tab = null; week = null; if (!asking) { askThread = []; askThreadId = null; } open = null; sel = null; planBranch = null; refresh(); }
+  if (e.target.dataset.repoPick !== undefined) { repo = e.target.value; impactFor = null; runPage = null; if (!repo && tab === "plan") tab = null; week = null; if (!asking) { askThread = []; askThreadId = null; } open = null; sel = null; planBranch = null; refresh(); }
   if (e.target.id === "planBranch") { planBranch = e.target.value; planEdit = null; Object.assign(hist, { area: "All", q: "", open: {}, limit: 8 }); refresh(); }
 });
 refresh().catch((e) => { $("#main").innerHTML = `<p class="lead">${esc(e.message)}</p>`; });

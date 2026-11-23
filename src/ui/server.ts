@@ -1,5 +1,6 @@
 import type { Client } from "@libsql/client";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
+import { userInfo } from "node:os";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { askData, originOf, shortRepo } from "../commands/ask.js";
@@ -57,6 +58,10 @@ async function lessonDetail(db: Client, id: string) {
 }
 
 /** A branch's plan for the page, defaulting to the branch checked out in the repo's folder, plus the other branches with plans. */
+function whoAmI(): string {
+  try { const n = execFileSync("git", ["config", "--global", "user.name"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(); if (n) return n.split(/\s+/)[0]!; } catch { /* no git name */ }
+  try { return userInfo().username; } catch { return ""; }
+}
 async function planView(db: Client, repo: string, branch: string | null) {
   const row = (await db.execute({ sql: "SELECT paths FROM repos WHERE id=?", args: [repo] })).rows[0];
   const root = row ? ((JSON.parse(String(row.paths)) as string[]).find((p) => existsSync(p)) ?? null) : null;
@@ -332,7 +337,8 @@ const routes: Record<string, Handler> = {
     if (codexPresent()) { const on = installed("codex").length > 0; out.push({ id: "codex", name: "Codex", on, state: on ? "Told by hooks" : "Not set up. Run muninn setup" }); }
     return out;
   },
-  "GET /api/settings": async () =>({ maxPerDelivery: settings().maxPerDelivery }),
+  // Your name for the sidebar: git's user.name, else your login on this Mac.
+  "GET /api/settings": async () => ({ maxPerDelivery: settings().maxPerDelivery, who: whoAmI() }),
   "GET /api/version": async () => ({ boot: BOOT, page: pageHash() }),
   // Scans: when the last one finished, whether one is running, and "Check now".
   "GET /api/scan": async (db) => ({ running: scanRunning(), needsModel: !modelCached(), lastLearn: String((await db.execute("SELECT value FROM meta WHERE key='last_learn'")).rows[0]?.value ?? "") || null }),
