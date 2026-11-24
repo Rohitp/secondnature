@@ -44,7 +44,7 @@ describe("answers from everything muninn keeps", () => {
 
 describe("the MCP tools", () => {
   it("lists its tools, each with a schema", () => {
-    expect(TOOLS.map((t) => t.name)).toEqual(["search_history", "open_results", "where_left_off", "get_plan", "list_lessons", "get_related", "get_week", "get_runs", "list_repos", "suggest_lesson", "review_lesson"]);
+    expect(TOOLS.map((t) => t.name)).toEqual(["search_history", "open_results", "where_left_off", "get_plan", "list_lessons", "get_related", "get_week", "get_runs", "list_repos", "suggest_lesson", "plan_note", "review_lesson"]);
     for (const t of TOOLS) expect(t.inputSchema.type).toBe("object");
   });
   it("says when to use each tool first, and marks which ones only read", () => {
@@ -52,7 +52,7 @@ describe("the MCP tools", () => {
     for (const t of TOOLS.filter((t) => t.name !== "review_lesson")) expect(t.description).toMatch(/^(Use this|Call this)/);
     for (const t of TOOLS) expect(t.title).toBeTruthy();
     const writes = TOOLS.filter((t) => !t.annotations.readOnlyHint).map((t) => t.name);
-    expect(writes).toEqual(["suggest_lesson", "review_lesson"]);
+    expect(writes).toEqual(["suggest_lesson", "plan_note", "review_lesson"]);
   });
   it("finds a repo by its short name, and says which ones exist when it can't", async () => {
     const db = await openDb();
@@ -102,7 +102,7 @@ describe("the MCP tools", () => {
     await new Promise<void>((ok, fail) => { const t = setInterval(() => { if (lines.length >= 3) { clearInterval(t); ok(); } }, 50); setTimeout(() => { clearInterval(t); fail(new Error(`only ${lines.length} replies`)); }, 15000); });
     child.kill();
     expect(lines[0]).toMatchObject({ id: 1, result: { protocolVersion: "2025-06-18", serverInfo: { name: "muninn" } } });
-    expect(lines[1].result.tools).toHaveLength(11);
+    expect(lines[1].result.tools).toHaveLength(12);
     expect(lines[2].result.content[0].text).toContain("shop");
   }, 30000);
 });

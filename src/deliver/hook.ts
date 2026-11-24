@@ -144,7 +144,9 @@ export async function deliver(db: Client, client: string, input: HookInput): Pro
     }
   }
   // This branch's plan, at the start of a fresh session, after where the last session left off.
-  const plan = freshStart && repo && branch ? planText(await getPlan(db, repo, branch), repo.split("/").pop() ?? repo, branch) : null;
+  // With what other agents are doing right now, so a new session doesn't start on work that's already under way.
+  const working = freshStart && repo && branch ? await import("../plan/live.js").then(async (m) => m.workingLines((await m.workingNow(db, repo, null)).filter((r) => r.name !== "main" || r.from === "note"))).catch(() => []) : [];
+  const plan = freshStart && repo && branch ? planText(await getPlan(db, repo, branch), repo.split("/").pop() ?? repo, branch, working) : null;
   // Lessons and notes kept "only if an agent looks it up" reach agents only if they know to look: say so once, at the start.
   const searchable = freshStart ? Number((await db.execute({ sql: `SELECT count(*) n FROM lessons l WHERE ${scope} AND l.always_on=0 AND NOT EXISTS (SELECT 1 FROM triggers t WHERE t.lesson_id=l.id)`, args: [repo, repo, role] })).rows[0]?.n ?? 0) : 0;
   // Past sessions here are stored and searchable: say so at the start, and again right after the conversation is
@@ -163,7 +165,7 @@ export async function deliver(db: Client, client: string, input: HookInput): Pro
     ...(mcp ? ["- the muninn tools where_left_off and get_plan: where this branch stands"] : []),
   ].join("\n") : null) : [
     searchable ? `muninn also keeps ${searchable} note(s) and lesson(s) about this work that aren't sent automatically. Before guessing how something here works or runs, look it up with ${via("search_history", `muninn ask "your question"`)}` : "",
-    stored ? `muninn keeps ${stored} earlier session(s) in this repo. Look things up instead of guessing when:\n- the engineer refers to past work ("like last time", "the bug we fixed", "what did we decide"): ${via("search_history", `muninn recall "what you're looking for"`)}\n- you're about to change something that was decided or fixed before: ${via("get_related", `muninn related "that decision or fix"`)} shows why it is the way it is and what depends on it${mcp ? "\n- the work involves agent teams, subagents or workflows: the muninn tool get_runs shows how earlier runs went, by role" : ""}` : "",
+    stored ? `muninn keeps ${stored} earlier session(s) in this repo. Look things up instead of guessing when:\n- the engineer refers to past work ("like last time", "the bug we fixed", "what did we decide"): ${via("search_history", `muninn recall "what you're looking for"`)}\n- you're about to change something that was decided or fixed before: ${via("get_related", `muninn related "that decision or fix"`)} shows why it is the way it is and what depends on it${mcp ? "\n- the work involves agent teams, subagents or workflows: the muninn tool get_runs shows how earlier runs went, by role\n- you start other sessions or subagents for long work: the muninn tool plan_note, when each starts, finishes, is blocked or needs the engineer, one plain sentence each, so the engineer can read what's going on in the plan without asking you" : ""}` : "",
   ].filter(Boolean).join("\n") || null;
   if (!out.length && !waiting && !handoff && !plan && !loopHint && !askLine && !askedText) { await log("no_match"); return null; }
   const lines: string[] = [];

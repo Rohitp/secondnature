@@ -845,6 +845,17 @@ function weekSection() {
       : `<p class="note">${weekLoading ? `<span class="spin" aria-hidden="true"></span> Reading the last 7 days of sessions…` : `<button class="linkbtn" data-week>Show your last 7 days</button>: where agents wasted effort, whether lessons helped, and what's waiting. Also <code>muninn insights</code>.`}</p>`}
   </section>`;
 }
+/* Working now: the sessions and subagents running for this branch, each with one line on what it's doing. The line is
+   the agent's own note (plan_note) when it left one, else muninn's reading of its log. */
+const W_STATE = { blocked: ["Blocked", "warn"], waiting: ["Needs you", "warn"], done: ["Done", "good"] };
+function workingCard() {
+  const rows = data.plan.working || [];
+  const row = (r) => { const st = W_STATE[r.state]; return `<li><div class="row" style="${r.kind === "subagent" ? "padding-left:22px" : ""}"><div class="main" style="cursor:default"><div class="title" style="font-weight:500">${esc(r.name)}${r.kind === "subagent" ? ` <span class="sub">subagent of ${esc(r.parent || "")}</span>` : ""}${st ? ` <span class="status ${st[1]}">${st[0]}</span>` : ""}</div>
+    <div style="color:var(--body)">${r.doing ? esc(r.doing) : '<span class="sub">No note yet</span>'}</div>
+    <div class="sub">${r.branch && r.branch !== data.plan.branch ? `on <span class="mono">${esc(r.branch)}</span> · ` : ""}${esc(ago(r.at))}${r.from === "log" ? " · from its log" : " · its own note"}</div></div></div></li>`; };
+  return `<section class="card" aria-labelledby="wnh"><div class="cardhead"><h2 id="wnh">Working now${rows.length ? ` · ${rows.filter((r) => r.kind !== "subagent").length}` : ""}</h2><span class="sub">Agents running for this branch, and the sessions it started</span></div>
+    ${rows.length ? `<ul class="group flat">${rows.map(row).join("")}</ul>` : `<p style="padding:0 18px 14px">Nothing running right now. When agents work here, each shows with a line on what it's doing.</p>`}</section>`;
+}
 function planSection() {
   if (!repo || !data.plan) return "";
   const p = data.plan.plan;
@@ -883,6 +894,7 @@ function planSection() {
       ${hasHist ? `<section class="card" aria-label="Done and decided"><div class="cardhead"><h2>Done and decided</h2><span class="sub">With what each decision led to</span></div>${historyBlock()}</section>` : `<section class="card pad"><h2>Done and decided</h2><p>Nothing finished on this branch yet. Done steps and the decisions that still hold show here.</p></section>`}
     </div>
     <div class="homecol">
+      ${workingCard()}
       <section class="card pad" aria-labelledby="hoh">
         <div style="display:flex;flex-direction:column;gap:2px"><h2 id="hoh">Where you left off</h2>
           <span class="sub">${ho ? `Written by your Claude when your last session here ended, in ${esc(TOOL_NAMES[ho.tool] || ho.tool)}, ${esc(ago(ho.created_at))}. The next session on this branch is told this, in any tool.` : "Written when a session on this branch ends. The next session here is told it, in any tool."}</span></div>
