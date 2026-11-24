@@ -67,3 +67,11 @@ export function startCheckpoint(transcript: string, client: string) {
   const child = spawn(process.execPath, [cli, "checkpoint", "--transcript", transcript, "--client", client], { detached: true, stdio: "ignore", env: { ...process.env, MUNINN_INTERNAL: "" } });
   child.unref();
 }
+
+/** Called when an agent says with plan_note that a step is done: folds the notes into the plan, in a separate process. */
+export function startNotesFold(repo: string, branch: string) {
+  if (isPaused() || process.env.MUNINN_INTERNAL) return;
+  const cli = join(dirname(fileURLToPath(import.meta.url)), "..", "cli.js");
+  const child = spawn(process.execPath, [cli, "plan", "notes", "--repo", repo, "--branch", branch], { detached: true, stdio: "ignore", env: { ...process.env, MUNINN_INTERNAL: "" } });
+  child.unref();
+}

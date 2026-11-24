@@ -7,9 +7,11 @@ import { openDb } from "../store/db.js";
  * muninn plan                        where this branch stands: goal, where it stands, next steps, recent decisions
  * muninn plan tidy [--all-repos]     rewrites each branch's plan as a short summary, checked against git
  * muninn plan history [--all-repos]  groups finished steps into outcomes and fills in decisions' reasons, for the page
+ * muninn plan notes --repo R --branch B   folds agents' plan_note notes into the plan (started by plan_note itself)
  */
 export async function planCmd(args: string[]) {
   if (args[0] === "history") return historyCmd(args);
+  if (args[0] === "notes") return notesCmd(args);
   if (!args[0]) return showPlan();
   if (args[0] !== "tidy") { console.log('Usage: muninn plan [tidy|history] [--all-repos]'); return; }
   const runner = pickRunner();
@@ -26,6 +28,21 @@ export async function planCmd(args: string[]) {
     } catch (e) { console.log(`${repo.split("/").pop()} @ ${branch}: couldn't tidy (${e instanceof Error ? e.message : String(e)}).`); }
     await saveUsage(db, runner, "plan tidy");
   }
+}
+
+async function notesCmd(args: string[]) {
+  const val = (f: string) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] ?? "" : ""; };
+  const repo = val("--repo"), branch = val("--branch");
+  const { isPaused } = await import("../config.js");
+  if (!repo || !branch || isPaused()) return;
+  const runner = pickRunner("background");
+  const { aiOut } = await import("../learn/writer.js");
+  // Out of AI usage: the notes wait, and the next done note or session end folds them in.
+  if (!runner || aiOut()?.provider === runner.name) return;
+  const db = await openDb();
+  const { applyNotes, writePlanFile } = await import("../plan/plan.js");
+  try { if (await applyNotes(db, repo, branch, runner)) await writePlanFile(db, repo).catch(() => null); }
+  finally { await saveUsage(db, runner, "plan update"); }
 }
 
 async function historyCmd(args: string[]) {
