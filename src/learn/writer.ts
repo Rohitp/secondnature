@@ -1,5 +1,5 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
@@ -75,9 +75,75 @@ export function findClient(name: "claude" | "codex"): string | null {
   if (!found.has(name)) found.set(name, works(name) ? name : PLACES().map((d) => join(d, name)).find((f) => existsSync(f) && works(f)) ?? null);
   return found.get(name)!;
 }
-const internalEnv = { ...process.env, MUNINN_INTERNAL: "1" };
+// Read on each call, so a PATH set after start-up (or by a test) is the one used.
+const internalEnv = () => ({ ...process.env, MUNINN_INTERNAL: "1" });
 
-import { settings } from "../config.js";
+import { ensureHome, home, settings } from "../config.js";
+
+/**
+ * Running out of AI usage. When the engineer's Claude or Codex says its usage or credits are used up, muninn writes
+ * ~/.muninn/ai-out.json and stops calling it until the time it said, or for an hour when it didn't say. AI steps
+ * (writing lessons, handoffs, PR notes, run findings, Ask) wait; everything else, including telling agents their
+ * lessons, keeps working. Missed handoffs are written by the next scan once it's back.
+ */
+export type AiOut = { provider: string; reason: string; at: string; until: string; kind?: "usage" | "rate" };
+const OUT_FILE = () => join(home(), "ai-out.json");
+/** What a client says when its usage, credits or quota are used up. Overloaded servers and timeouts don't count. */
+export const OUT_OF_USAGE = /credit balance|usage limit|limit reached|limit (?:will )?reset|out of (?:credits|usage|extra usage)|insufficient[_ ]quota|quota (?:exceeded|exhausted)|exceeded your current quota|billing|payment required|rate[_ ]limit|too many requests|\b429\b/i;
+export class AiUnavailable extends Error {
+  constructor(public out: AiOut) { super(aiOutWords(out)); this.name = "AiUnavailable"; }
+}
+/** When the limit resets, from the client's words: a Unix time ("limit reached|1764000000") or a clock time ("resets 3pm"). One hour from now otherwise. */
+export function resetTime(text: string, now = new Date()): Date {
+  const epoch = text.match(/\|(\d{10})\b/)?.[1];
+  if (epoch) return new Date(Number(epoch) * 1000);
+  const c = text.match(/resets?\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+  if (c) {
+    let h = Number(c[1]) % 24; const m = Number(c[2] ?? 0);
+    if (c[3]) h = (h % 12) + (c[3].toLowerCase() === "pm" ? 12 : 0);
+    const t = new Date(now); t.setHours(h, m, 0, 0);
+    if (t <= now) t.setDate(t.getDate() + 1);
+    return t;
+  }
+  return new Date(now.getTime() + 60 * 60_000);
+}
+/** "Your Claude is out of usage until 15:00. …" for a person to read. */
+export function aiOutWords(o: AiOut): string {
+  const who = o.provider === "codex" ? "Codex" : "Claude";
+  const until = new Date(o.until);
+  const when = until.getTime() - Date.now() < 20 * 3600_000 ? until.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : until.toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  return `Your ${who} is ${o.kind === "rate" ? "rate-limited" : "out of usage"}, so muninn's AI steps are paused until about ${when}. Everything else keeps working.`;
+}
+/** The current pause, or null. A pause whose time has passed is cleared, so the next call tries again. */
+export function aiOut(): AiOut | null {
+  try {
+    const o = JSON.parse(readFileSync(OUT_FILE(), "utf8")) as AiOut;
+    if (Date.parse(o.until) > Date.now()) return o;
+    rmSync(OUT_FILE(), { force: true });
+  } catch { /* none */ }
+  return null;
+}
+export function clearAiOut() { rmSync(OUT_FILE(), { force: true }); }
+/** Records that a client is out of usage, when what it said shows that, and returns the pause; null for any other failure. */
+export function noteOut(provider: string, said: string): AiOut | null {
+  if (!OUT_OF_USAGE.test(said)) return null;
+  // A short rate limit with no reset time is waited out for 10 minutes, a used-up allowance for an hour.
+  const brief = /rate[_ ]limit|too many requests|\b429\b/i.test(said) && !/credit|usage limit|quota|billing|payment/i.test(said);
+  const until = /\|\d{10}\b|resets?\s/i.test(said) ? resetTime(said) : new Date(Date.now() + (brief ? 10 : 60) * 60_000);
+  const o: AiOut = { provider, reason: said.replace(/\s+/g, " ").trim().slice(0, 200), at: new Date().toISOString(), until: until.toISOString(), kind: brief ? "rate" : "usage" };
+  try { ensureHome(); writeFileSync(OUT_FILE(), JSON.stringify(o)); } catch { /* the error still says it */ }
+  return o;
+}
+/** Turns a failed call into AiUnavailable when the client ran out of usage; otherwise keeps the client's own words in the error. */
+function failure(provider: string, code: number | null, out: string, err: string): Error {
+  let said = err;
+  try { const d = JSON.parse(out); if (d?.is_error || d?.result) said = `${String(d.result ?? d.subtype ?? "")} ${err}`; } catch { said = `${out.slice(-400)} ${err}`; }
+  const o = noteOut(provider, said);
+  if (o) return new AiUnavailable(o);
+  const words = said.replace(/\s+/g, " ").trim().slice(0, 200);
+  return new Error(`${provider === "claude" ? "Claude" : "Codex"} failed${code !== null ? ` (exit ${code})` : ""}${words ? `: ${words}` : ""}`);
+}
+
 
 /** Background jobs summarise, so they use a cheaper model. Judging what is worth a lesson uses the default. */
 export type Job = "judge" | "background";
@@ -98,19 +164,22 @@ export function command(name: string, job: Job): [string, string[]] {
 export function readReply(name: string, job: Job, raw: string): { text: string; usage: Usage } {
   if (name !== "claude") return { text: raw, usage: { job, provider: name, model: null, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, costUsd: null } };
   const d = JSON.parse(raw);
-  if (d.is_error) throw new Error(`claude returned an error: ${String(d.result ?? d.subtype).slice(0, 200)}`);
+  if (d.is_error) { const o = noteOut(name, String(d.result ?? d.subtype)); throw o ? new AiUnavailable(o) : new Error(`claude returned an error: ${String(d.result ?? d.subtype).slice(0, 200)}`); }
   const u = d.usage ?? {};
   return { text: String(d.result ?? ""), usage: { job, provider: "claude", model: Object.keys(d.modelUsage ?? {})[0] ?? null, input: u.input_tokens ?? 0, output: u.output_tokens ?? 0, cacheRead: u.cache_read_input_tokens ?? 0, cacheWrite: u.cache_creation_input_tokens ?? 0, costUsd: typeof d.total_cost_usd === "number" ? d.total_cost_usd : null } };
 }
-const runSync = ([cmd, args]: [string, string[]], prompt: string) =>
-  execFileSync(cmd, args, { input: prompt, encoding: "utf8", env: internalEnv, timeout: 180_000, maxBuffer: 1 << 24, stdio: ["pipe", "pipe", "ignore"] });
+const runSync = (provider: string, [cmd, args]: [string, string[]], prompt: string) => {
+  try { return execFileSync(cmd, args, { input: prompt, encoding: "utf8", env: internalEnv(), timeout: 180_000, maxBuffer: 1 << 24, stdio: ["pipe", "pipe", "pipe"] }); }
+  catch (e) { const x = e as { status?: number | null; stdout?: string; stderr?: string; message: string }; throw x.stdout || x.stderr ? failure(provider, x.status ?? null, String(x.stdout ?? ""), String(x.stderr ?? "")) : e; }
+};
 /** The same call without blocking, for the UI server. */
-const runAsync = ([cmd, args]: [string, string[]], prompt: string) => new Promise<string>((ok, fail) => {
-  const child = spawn(cmd, args, { env: internalEnv, stdio: ["pipe", "pipe", "ignore"] });
-  let out = ""; const timer = setTimeout(() => { child.kill(); fail(new Error(`${cmd} took too long`)); }, 180_000);
+const runAsync = (provider: string, [cmd, args]: [string, string[]], prompt: string) => new Promise<string>((ok, fail) => {
+  const child = spawn(cmd, args, { env: internalEnv(), stdio: ["pipe", "pipe", "pipe"] });
+  let out = "", err = ""; child.stderr.setEncoding("utf8"); child.stderr.on("data", (d) => { if (err.length < 8000) err += d; });
+  const timer = setTimeout(() => { child.kill(); fail(new Error(`${cmd} took too long`)); }, 180_000);
   child.stdout.setEncoding("utf8"); child.stdout.on("data", (d) => { out += d; });
   child.on("error", (e) => { clearTimeout(timer); fail(e); });
-  child.on("close", (code) => { clearTimeout(timer); if (code === 0) ok(out); else fail(new Error(`${cmd} exited with ${code}`)); });
+  child.on("close", (code) => { clearTimeout(timer); if (code === 0) ok(out); else fail(failure(provider, code, out, err)); });
   child.stdin.end(prompt);
 });
 
@@ -125,15 +194,18 @@ export function pickRunner(job: Job = "background"): Runner | null {
   const cmd = command(choice, job);
   cmd[0] = findClient(choice) ?? choice;
   const calls: Usage[] = [];
-  const done = (raw: string) => { const r = readReply(choice, job, raw); calls.push(r.usage); return r.text; };
-  return { name: choice, job, calls, run: (p) => done(runSync(cmd, p)), runAsync: async (p) => done(await runAsync(cmd, p)) };
+  // While the client is out of usage, calls stop at once with words a person can act on, instead of failing one by one.
+  const check = () => { const o = aiOut(); if (o && o.provider === choice) throw new AiUnavailable(o); };
+  const done = (raw: string) => { const r = readReply(choice, job, raw); calls.push(r.usage); if (existsSync(OUT_FILE())) clearAiOut(); return r.text; };
+  return { name: choice, job, calls, run: (p) => { check(); return done(runSync(choice, cmd, p)); }, runAsync: async (p) => { check(); return done(await runAsync(choice, cmd, p)); } };
 }
 /** Stores and clears the usage a runner has collected. */
 export async function saveUsage(db: { execute: (q: { sql: string; args: (string | number | null)[] }) => Promise<unknown> }, runner: Runner | null, what: string) {
   for (const u of runner?.calls?.splice(0) ?? []) await db.execute({ sql: "INSERT INTO llm_calls (id,ts,what,job,provider,model,input_tokens,output_tokens,cache_read,cache_write,cost_usd) VALUES (lower(hex(randomblob(16))),?,?,?,?,?,?,?,?,?,?)", args: [new Date().toISOString(), what, u.job, u.provider, u.model, u.input, u.output, u.cacheRead, u.cacheWrite, u.costUsd] });
 }
 export function pickWriter(runner = pickRunner("judge")): (Writer & { runner: Runner }) | null {
-  if (!runner) return null;
+  // Out of usage: scans go on without a writer, so repeated instructions still become lessons and nothing else stops.
+  if (!runner || aiOut()?.provider === runner.name) return null;
   return {
     name: runner.name, runner,
     write: async (moments) => {

@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { isPaused, settings } from "../config.js";
 import { syncCursor } from "../deliver/cursor.js";
 import { age, currentBranch, latestHandoff, makeHandoff } from "../handoff/handoff.js";
-import { pickRunner, saveUsage } from "../learn/writer.js";
+import { aiOut, pickRunner, saveUsage } from "../learn/writer.js";
 import { readAny } from "../logs/discover.js";
 import { eventLine, isOwnRun } from "../logs/types.js";
 import { repoIdentity } from "../repo/identity.js";
@@ -17,7 +17,8 @@ export async function handoff(args: string[]) {
     const s = readAny(file);
     if (isOwnRun(s)) return;
     const runner = pickRunner("background");
-    if (!runner) return;
+    // Out of AI usage: no handoff now. The next scan after it's back writes handoffs for sessions that ended without one.
+    if (!runner || aiOut()?.provider === runner.name) return;
     const db = await openDb();
     try {
       // A long session (or one already checkpointed) first gets its uncovered part folded in, piece by piece,

@@ -185,6 +185,10 @@ After that you don't need any commands. secondnature reads new sessions on its o
 
 Run `muninn help` for the full list. Output follows a few rules: the answer comes first, anything you need to do ends with `Next:` and the exact command, every mark (✓ ! ✗ –) comes with words, and `NO_COLOR=1` turns colour off.
 
+## When your Claude runs out of usage
+
+muninn uses your own Claude Code (or Codex) for its AI steps. When that runs out of usage or credits, muninn notices what it said, pauses its AI steps until the reset time it gave (or for an hour), and says so at the top of `muninn ui` and in `muninn status`. Paused: writing new lessons, handoffs and plan updates, PR notes, run findings and Ask. Still working: agents are told the lessons you kept, history search, and lessons from things you said word for word more than once. When it's back, the next scan catches up on handoffs it missed. On the page you can **Try again now**, or switch AI steps to the other client if both are installed.
+
 ## Status
 
 Early, and built for one person's daily use first. It works day to day with Claude Code and with Antigravity agent swarms. Not yet tested live: Codex delivery, and Claude Code agent teams, whose message format in the logs isn't documented (muninn reads it defensively, and relies on the documented team hooks). Cursor's chats are read through an undocumented format. Costs are estimates at Anthropic's list prices; set your own in `~/.muninn/config.json` under `prices` for other models, such as Gemini.

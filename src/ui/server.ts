@@ -16,7 +16,7 @@ import { loadEmbedder, modelCached, type Embed } from "../embed/model.js";
 import { fillExplanations } from "../learn/explain.js";
 import { replay } from "../learn/replay.js";
 import { keepLine, openFlags, removeLine, restoreLine, rootOf } from "../memory/stale.js";
-import { pickRunner, saveUsage } from "../learn/writer.js";
+import { aiOut, aiOutWords, clearAiOut, findClient, pickRunner, saveUsage } from "../learn/writer.js";
 import { reportData } from "../commands/report.js";
 import { defaultRoute, isPreference, similar, suggestKeyword, usefulKeyword, worthSentence } from "../commands/review.js";
 import { home, saveSettings, settings } from "../config.js";
@@ -74,6 +74,12 @@ async function planView(db: Client, repo: string, branch: string | null) {
   return { branch: b, checkedOut, branches, plan: await getPlan(db, repo, b), history: await getHistory(db, repo, b), fileOn: await planFileOn(db, repo) };
 }
 
+/** Whether AI steps are paused for lack of usage: what to say, until when, and the other client the engineer could switch to. */
+function aiState() {
+  const o = aiOut(); if (!o) return null;
+  const other = o.provider === "claude" ? "codex" : "claude";
+  return { provider: o.provider, words: aiOutWords(o), reason: o.reason, until: o.until, other: findClient(other) ? other : null };
+}
 const routes: Record<string, Handler> = {
   "GET /api/repos": async (db) => (await db.execute("SELECT r.id, (SELECT count(*) FROM lessons l WHERE l.repo_id=r.id AND l.status='proposed') waiting, (SELECT count(*) FROM lessons l WHERE l.repo_id=r.id AND l.status='live') live FROM repos r ORDER BY live+waiting DESC, r.id")).rows,
   "GET /api/lessons": async (db, q) => {
@@ -403,7 +409,9 @@ const routes: Record<string, Handler> = {
   },
   "GET /api/version": async () => ({ boot: BOOT, page: pageHash() }),
   // Scans: when the last one finished, whether one is running, and "Check now".
-  "GET /api/scan": async (db) => ({ running: scanRunning(), needsModel: !modelCached(), lastLearn: String((await db.execute("SELECT value FROM meta WHERE key='last_learn'")).rows[0]?.value ?? "") || null }),
+  "GET /api/scan": async (db) => ({ ai: aiState(), running: scanRunning(), needsModel: !modelCached(), lastLearn: String((await db.execute("SELECT value FROM meta WHERE key='last_learn'")).rows[0]?.value ?? "") || null }),
+  // Out of AI usage: try again now (after topping up), or switch AI steps to the other client on this machine.
+  "POST /api/ai-retry": async () => { clearAiOut(); return { ok: true }; },
   "POST /api/scan": async () => ({ started: startAutoScan({ force: true }), running: true }),
   // What a run of autonomous work shows: kept findings for runs the page lists, or one call to your Claude for a run.
   "POST /api/run-findings": async (db, _q, b) => {

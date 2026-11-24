@@ -42,13 +42,13 @@ export async function learnRepo(db: Client, repo: string, sessions: Session[], d
   // Repeats keep the engineer's words without a writer. The other signals need one.
   let texts: Written[];
   if (!moments.length) texts = [];
-  else if (deps.writer) {
-    texts = await deps.writer.write(moments);
+  else if (deps.writer && (texts = await deps.writer.write(moments).catch((e) => { if (e?.name === "AiUnavailable") return null as unknown as Written[]; throw e; }))) {
     res.written = texts.filter(Boolean).length;
     res.discarded = texts.filter((t) => !t).length;
     const at = new Date().toISOString();
     for (const [i, t] of texts.entries()) if (!t) await db.execute({ sql: "INSERT OR REPLACE INTO judged (repo_id,key,verdict,at) VALUES (?,?,'noise',?)", args: [repo, momentKey(moments[i]!), at] });
   } else {
+    // No writer, or it ran out of usage: repeats keep your words; the rest wait for a later scan (nothing is marked as noise).
     texts = moments.map((m) => (m.signal === "repeat" ? { text: m.text, scope: "repo" } : null));
     res.skippedNoWriter = moments.filter((m) => m.signal !== "repeat").length;
   }
