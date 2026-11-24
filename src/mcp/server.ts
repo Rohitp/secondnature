@@ -221,7 +221,9 @@ export async function callTool(db: Client, name: string, a: Args, embed: () => P
     found.push({ kind: "plan", id: `${repo}#${branch}` });
     const { workingNow, workingLines } = await import("../plan/live.js");
     const working = await workingNow(db, repo, branch).then(workingLines).catch(() => []);
-    return planMarkdown(plan, repo.split("/").pop() ?? repo, branch, working);
+    const { getHistory } = await import("../plan/history.js");
+    const outcomes = await getHistory(db, repo, branch).then((h) => h.outcomes.map((o) => ({ title: o.title, result: o.result, ref: o.ref, at: o.at, stepIds: o.steps.map((x) => x.id) }))).catch(() => null);
+    return planMarkdown(plan, repo.split("/").pop() ?? repo, branch, working, Date.now(), outcomes);
   }
   if (name === "plan_note") {
     if (!repo) throw new Error("Say which repo: the chat isn't running inside one.");
@@ -303,6 +305,16 @@ export async function callTool(db: Client, name: string, a: Args, embed: () => P
     return h ? handoffText(h, settings().handoffStaleDays) : `No session on ${branch} in ${repo.split("/").pop()} has left a note in the last 30 days. Try get_plan for the branch's plan.`;
   }
   throw new Error(`No tool called ${name}.`);
+}
+
+/** What an agent asked, as the Activity page shows it: its words for a search, plain words for a lookup, never a bare id. */
+export function askedWords(name: string, a: Args): string {
+  const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  if (name === "open_results") { const n = Array.isArray(a.ids) ? a.ids.length : 1; return `Opened ${n} search match${n === 1 ? "" : "es"} in full`; }
+  if (name === "review_lesson") return `${a.action === "keep" ? "Keep" : a.action === "dismiss" ? "Dismiss" : "Fold into an older lesson"} a suggested lesson${str(a.engineer_said) ? `, because the engineer said "${str(a.engineer_said).slice(0, 100)}"` : ""}`;
+  if (name === "plan_note") return `${str(a.who) || "An agent"}${a.state && a.state !== "working" ? ` (${String(a.state)})` : ""}: ${str(a.text)}`;
+  if (name === "get_plan" || name === "where_left_off") return str(a.branch) ? `The ${str(a.branch)} branch` : "";
+  return str(a.query) || str(a.about) || str(a.text) || "";
 }
 
 const k = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n));
@@ -395,7 +407,7 @@ export async function serveMcp() {
         // The log of agents' questions: what was asked, where, and what it found.
         const repo = await resolveRepo(db, args).catch(() => null);
         const here = repoIdentity(process.cwd());
-        const asked = String(args.query ?? (Array.isArray(args.ids) ? args.ids.join(", ") : undefined) ?? args.about ?? args.text ?? args.id ?? args.branch ?? Object.values(args).filter((v) => typeof v === "string").join(" ") ?? "");
+        const asked = askedWords(name, args);
         await recordQuery(db, { repo, branch: repo && repo === here ? currentBranch(process.cwd()) : (typeof args.branch === "string" ? args.branch : null), session: process.env.CLAUDE_CODE_SESSION_ID ?? null, tool: client, surface: name, query: asked, results: found.length, result_ids: found, ms: Date.now() - t0, answer });
       } else send({ jsonrpc: "2.0", id: m.id, error: { code: -32601, message: `Unknown method ${m.method}` } });
     } catch (e) { send({ jsonrpc: "2.0", id: m.id, error: { code: -32603, message: e instanceof Error ? e.message : String(e) } }); }
