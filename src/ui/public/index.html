@@ -519,6 +519,16 @@ main.enter .meter .bar span, main.enter .rolebar .bar span { transform-origin: l
 .viz .hit:hover + .pt, .viz .hit:focus-visible + .pt { r: 8.5; stroke-width: 2.5; }
 .viz .bar:hover { filter: brightness(1.15); }
 .viz .arc:hover { stroke-width: 3.5; }
+/* While a page loads for the first time: grey blocks in the page's shape. While shown data is being refreshed: a small pill. */
+.skel { background: var(--fill); border-radius: 8px; position: relative; overflow: hidden; }
+.skel::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--group) 60%, transparent), transparent); transform: translateX(-100%); animation: shimmer 1.3s ease-in-out infinite; }
+@keyframes shimmer { to { transform: translateX(100%); } }
+.skelcard { background: var(--group); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+.updating { position: fixed; top: 14px; right: 18px; z-index: 6; display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 999px; background: var(--group); border: 1px solid var(--line-strong); color: var(--muted); font-size: 12px; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+.ainote { grid-column: 1 / -1; display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; padding: 14px 16px; border-radius: var(--radius-lg); border: 1px solid var(--warn-line); background: var(--warn-bg); color: var(--body); }
+.ainote strong { color: var(--ink); } .ainote .grow { flex: 1 1 320px; } .ainote p { margin: 4px 0 0; font-size: 13px; }
+.ainote .acts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+@media (prefers-reduced-motion: reduce) { .skel::after { animation: none; } }
 .viztip { position: fixed; z-index: 50; max-width: 300px; padding: 8px 10px; border-radius: 8px; background: var(--group); color: var(--body); border: 1px solid var(--line-strong); font-size: 12px; line-height: 17px; pointer-events: none; opacity: 0; transform: translateY(4px); transition: opacity .12s ease, transform .12s ease; box-shadow: 0 4px 16px rgba(0,0,0,.18); }
 .viztip.on { opacity: 1; transform: none; }
 .viztip b { display: block; font-weight: 600; margin-bottom: 2px; color: var(--ink); }
@@ -931,24 +941,37 @@ function toast(msg, action) {
   t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show", "act"), action ? 7000 : 2800);
 }
 
+/* The last data each repo's page showed, kept in this browser so a reload or a repo switch shows it at once while fresh data loads. */
+const CACHE_KEY = (r) => `muninn:page:${r || "all"}`;
+const readCache = (r) => { try { const v = localStorage.getItem(CACHE_KEY(r)); return v ? JSON.parse(v) : null; } catch { return null; } };
+function writeCache(r, d) {
+  try { const v = JSON.stringify(d); if (v.length < 1_500_000) localStorage.setItem(CACHE_KEY(r), v); } catch { /* full or blocked: the page just loads without it */ }
+}
+/* True while the page shows saved data and fresh data is still loading; a pill says so. */
+let stale = false;
 async function load() {
-  const [repos, suggested, kept, home, scan] = await Promise.all([
-    api("/api/repos"), api("/api/lessons?" + q({ repo, status: "proposed" })), api("/api/lessons?" + q({ repo, status: "live" })), api("/api/home?" + q({ repo })), api("/api/scan"),
+  // Every request at once (they don't depend on each other), so the page waits for the slowest one, not their sum.
+  const forRepo = repo;
+  const [[repos, suggested, kept, home, scan], [plan, memory, lessonFile, proposals, threads, askSuggestions, rules], [schedule, prefs], [handoffs, tools], [runs, runInfo], effects, asked, told] = await Promise.all([
+    Promise.all([api("/api/repos"), api("/api/lessons?" + q({ repo, status: "proposed" })), api("/api/lessons?" + q({ repo, status: "live" })), api("/api/home?" + q({ repo })), api("/api/scan")]),
+    Promise.all([repo ? api("/api/plan?" + q({ repo, branch: planBranch })) : null, api("/api/memory?" + q({ repo })), repo ? api("/api/lesson-file?" + q({ repo })) : null, api("/api/proposals?" + q({ repo })), api("/api/threads?" + q({ repo })), api("/api/ask-suggestions?" + q({ repo })).catch(() => []), repo ? api("/api/rules?" + q({ repo })).catch(() => null) : null]),
+    Promise.all([api("/api/schedule").catch(() => null), api("/api/settings?" + q({ repo })).catch(() => ({}))]),
+    // Home: where the last session left off, and which coding tools are set up to be told.
+    Promise.all([api("/api/handoffs?" + q({ repo })).catch(() => []), api("/api/tools?" + q({ repo })).catch(() => [])]),
+    // Autonomous runs, then what your Claude found about each.
+    (async () => { const rs = repo ? await api("/api/runs?" + q({ repo })).catch(() => []) : []; return [rs, Array.isArray(rs) && rs.length ? await api("/api/run-findings", { runs: rs }).catch(() => ({})) : {}]; })(),
+    // Whether each role lesson is helping.
+    repo ? api("/api/role-effects?" + q({ repo })).catch(() => []) : [],
+    // What agents asked secondnature this week (questions you typed in a terminal are left out), and how often each lesson was found.
+    api("/api/queries?" + q({ repo, days: 7 })).catch(() => ({ queries: [], lessonFinds: {} })),
+    // What secondnature's hooks told agents this week, session by session, and what it held back.
+    api("/api/told?" + q({ repo, days: 7 })).catch(() => null),
   ]);
-  const [plan, memory, lessonFile, proposals, threads, askSuggestions, rules] = await Promise.all([repo ? api("/api/plan?" + q({ repo, branch: planBranch })) : null, api("/api/memory?" + q({ repo })), repo ? api("/api/lesson-file?" + q({ repo })) : null, api("/api/proposals?" + q({ repo })), api("/api/threads?" + q({ repo })), api("/api/ask-suggestions?" + q({ repo })).catch(() => []), repo ? api("/api/rules?" + q({ repo })).catch(() => null) : null]);
-  const [schedule, prefs] = await Promise.all([api("/api/schedule").catch(() => null), api("/api/settings?" + q({ repo })).catch(() => ({}))]);
-  // Home: where the last session left off, and which coding tools are set up to be told.
-  const [handoffs, tools] = await Promise.all([api("/api/handoffs?" + q({ repo })).catch(() => []), api("/api/tools?" + q({ repo })).catch(() => [])]);
-  // Autonomous runs come from the data side's /api/runs; until it's there, the section stays hidden.
-  const runs = repo ? await api("/api/runs?" + q({ repo })).catch(() => []) : [];
-  const runInfo = Array.isArray(runs) && runs.length ? await api("/api/run-findings", { runs }).catch(() => ({})) : {};
-  // Whether each role lesson is helping, from the data side's /api/role-effects.
-  const effects = repo ? await api("/api/role-effects?" + q({ repo })).catch(() => []) : [];
-  // What agents asked secondnature this week (questions you typed in a terminal are left out), and how often each lesson was found.
-  const asked = await api("/api/queries?" + q({ repo, days: 7 })).catch(() => ({ queries: [], lessonFinds: {} }));
-  // What secondnature's hooks told agents this week, session by session, and what it held back.
-  const told = await api("/api/told?" + q({ repo, days: 7 })).catch(() => null);
+  // The repo was switched while this loaded: a newer load is on its way, so drop this one.
+  if (forRepo !== repo) return false;
   data = { prefs, who: prefs.who || null, repos, suggested, kept, home, scan, plan, memory, lessonFile, proposals, threads, askSuggestions, rules, schedule, runs: Array.isArray(runs) ? runs : [], runInfo, effects: Array.isArray(effects) ? effects : [], queries: (asked.queries || []).filter((x) => x.tool !== "terminal"), lessonFinds: asked.lessonFinds || {}, lessonText: asked.lessonText || {}, told, handoffs: Array.isArray(handoffs) ? handoffs : [], tools: Array.isArray(tools) ? tools : [] };
+  writeCache(repo, data); stale = false;
+  return true;
 }
 
 /* Autonomous runs: sessions working together in a repo, each in a role (subagents, or agents in their own worktrees),
@@ -1412,7 +1435,16 @@ function drawPage() {
   document.body.classList.toggle("firstrun", t === "welcome");
   const body = t === "welcome" ? welcomeView() : t === "home" ? homeView() : t === "impact" ? impactView() : t === "lessons" ? lessonsView() : t === "plan" ? (repo && data.plan ? planSection() : lessonsView())
     : t === "activity" ? (runPage ? runPageView() : activityView()) : settingsView();
-  $("#main").innerHTML = t === "welcome" ? `<header class="frbar"><div class="brand" style="margin:0"><span class="mark">${MARK}</span><span class="wordmark">secondnature</span></div><span class="sub" style="font-size:13px">Set up · takes a few minutes</span></header>${body}` : `<div class="grid">${body}</div>`;
+  $("#main").innerHTML = (t === "welcome" ? `<header class="frbar"><div class="brand" style="margin:0"><span class="mark">${MARK}</span><span class="wordmark">secondnature</span></div><span class="sub" style="font-size:13px">Set up · takes a few minutes</span></header>${body}` : `<div class="grid">${aiNotice()}${body}</div>`) + updatingPill();
+}
+/* When your Claude (or Codex) is out of usage: what's paused, what still works, and what you can do. */
+function aiNotice() {
+  const a = data?.scan?.ai; if (!a) return "";
+  const other = a.other === "codex" ? "Codex" : a.other === "claude" ? "Claude Code" : null;
+  return `<div class="ainote" role="status"><div class="grow"><strong>${esc(a.words)}</strong>
+    <p>Paused until then: writing new lessons, handoffs and plan updates, PR notes, run findings and Ask. Still working: agents are told the lessons you kept, history search, and lessons from things you said word for word more than once. Sessions from now are caught up once it's back.</p>
+    <p style="color:var(--muted)">It said: “${esc(a.reason)}”</p></div>
+    <div class="acts"><button class="btn" data-ai-retry>Try again now</button>${other ? `<button class="btn2" data-ai-switch="${esc(a.other)}">Use ${other} instead</button>` : ""}</div></div>`;
 }
 /* First run: connect your tools, read your sessions, then keep the first few lessons. Opens by itself until
    secondnature has read your sessions once; also at ?tab=welcome. The sidebar is hidden while it's open. */
@@ -1696,19 +1728,34 @@ const askBox = () => `<form class="asksearch" data-home-ask role="search">${svg(
 /* Is it helping?: whether problems you kept a lesson for stopped, by day and lesson by lesson, and what output trims saved.
    Read from the logs, so it loads when you open it rather than with the rest of the page. */
 let impact = null, impactFor = null, impactLoading = false, impactFilter = "all", proofSaved = "";
+/* This page reads the logs, so it takes seconds: its last result per repo is kept in this browser and shown while it reloads. */
+const readImpact = (r) => { try { const v = localStorage.getItem(`muninn:impact:${r || "all"}`); return v ? JSON.parse(v) : null; } catch { return null; } };
 async function loadImpact() {
   if (impactLoading || impactFor === repo) return;
-  impactLoading = true;
-  try { impact = await api("/api/impact?" + q({ repo })); } catch (e) { impact = { error: e.message }; }
-  impactFor = repo;
-  impactLoading = false; draw();
+  impactLoading = true; const forRepo = repo;
+  let got;
+  try { got = await api("/api/impact?" + q({ repo })); try { localStorage.setItem(`muninn:impact:${repo || "all"}`, JSON.stringify(got)); } catch { /* fine */ } } catch (e) { got = { error: e.message }; }
+  impactLoading = false;
+  if (forRepo !== repo) return;
+  impact = got; impactFor = repo; draw();
 }
 const OUTCOME_WORD = { worked: ["Helping", "good"], came_back: ["Still happening", "warn"], too_early: ["Too early to tell", ""] };
 function impactView() {
   const head = `<header class="homehead"><div><h1>Is it helping?</h1><p class="lead">Whether the problems you kept a lesson for stopped, and what shorter output saved.</p></div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px"><button class="btn2 big" data-proof-page>Make a page to send someone</button>${proofSaved ? `<span role="status" class="sub" style="font-size:13px;max-width:44ch;text-align:right">${esc(proofSaved)}</span>` : ""}</div></header>`;
-  if (impactFor !== repo) { loadImpact(); return head + `<div class="s12 card pad"><p><span class="spin" aria-hidden="true" style="display:inline-block;vertical-align:-2px"></span> Reading your sessions to see what came back…</p></div>`; }
-  if (impact.error) return head + `<div class="s12 card pad"><p>Couldn't read this: ${esc(impact.error)}</p></div>`;
+  if (impactFor !== repo) {
+    loadImpact();
+    impact ??= readImpact(repo);
+    // Nothing saved yet: the page's shape, with what's happening in words.
+    if (!impact || impact.error) return head + `<div class="s12" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px" aria-busy="true">${[1, 2, 3, 4].map(() => `<div class="skelcard"><div class="skel" style="width:50%;height:28px"></div><div class="skel" style="width:80%;height:12px"></div></div>`).join("")}</div>
+      <div class="s12 skelcard" aria-busy="true"><p class="sub" style="margin:0"><span class="spin" aria-hidden="true" style="display:inline-block;vertical-align:-2px"></span> Reading your sessions to see what came back. This takes a few seconds the first time.</p>${[90, 75, 85, 60].map((w) => `<div class="skel" style="width:${w}%;height:12px"></div>`).join("")}</div>`;
+    // Saved: show it, with the pill while it refreshes.
+    return head + `<div class="updating" role="status"><span class="spin" aria-hidden="true"></span>Updating…</div>` + impactBody();
+  }
+  return head + impactBody();
+}
+function impactBody() {
+  if (impact.error) return `<div class="s12 card pad"><p>Couldn't read this: ${esc(impact.error)}</p></div>`;
   const m = impact; const c = m.counts; const n = m.lessons.length;
   const summary = `<section class="s12 card pad" aria-label="Summary"><p style="font-size:18px;font-weight:600;color:var(--ink)">${esc(n ? `${n} kept. ${c.worked} helping. ${c.came_back} still happening. ${c.too_early} too early to tell.` : "No kept lessons yet.")}</p>
       <p class="sub" style="font-size:13px">A lesson counts as helping once ${m.minSessions} sessions have passed since you kept it, agents were told it, and its problem hasn't come back.</p></section>`;
@@ -1742,7 +1789,7 @@ function impactView() {
           <div class="trimbar"><div class="meterbar"><span style="width:${pct}%"></span></div><span>${f.enough ? `About ${tok(f.before.avgTokens)} tokens a run before, ${tok(f.after.avgTokens)} since` : `${f.after.runs} run${f.after.runs === 1 ? "" : "s"} since applying, too few to say`}</span></div>
           <span class="saved">${f.enough && f.savedTokens ? `${tok(f.savedTokens)} saved${f.savedUsd != null ? ` · about $${f.savedUsd.toFixed(2)}` : ""}` : ""}</span><span class="sub">${esc(f.verdict)}</span></li>`; }).join("")}</ul>`
       : `<p class="empty" style="margin:0">None applied yet. When a command keeps showing agents thousands of lines they don't read, secondnature proposes a shorter version in Lessons, under Proposed changes.</p>`}</section>`;
-  return head + summary + chart + table + trims;
+  return summary + chart + table + trims;
 }
 /* Activity: the week, runs and what they showed. */
 function activityView() {
@@ -2018,7 +2065,23 @@ function rulesRow(tool, name, dir) {
   return `<li><div class="row"><div class="main" style="cursor:default"><div class="title">Give ${name}'s agent your lessons</div><div class="sub">${name} has no way for muninn to step in during a session, so lessons go in rules files in ${dir}, which its agent reads. git is told to ignore them.${r.auto ? ` Turned on by secondnature on ${esc(when)}, because you used ${name} in this repo.` : ` secondnature turns this on by itself once you use ${name} here, unless you've turned it off.`}</div></div>
     <button class="switch" role="switch" aria-checked="${r.on}" aria-label="Give ${name}'s agent your lessons" data-rules="${tool}"></button></div></li>`;
 }
-async function refresh() { rememberPick(); await load(); draw(); if (data.scan.running) followScan(data.suggested.length); }
+async function refresh() {
+  rememberPick();
+  // Nothing on screen yet, or a different repo's data: show this repo's saved data if there is some, else a skeleton.
+  if (!data || data._repo !== repo) { const c = readCache(repo); if (c) { data = c; stale = true; draw(); } else { stale = true; drawSkeleton(); } }
+  if (!(await load())) return;
+  data._repo = repo;
+  draw(); if (data.scan.running) followScan(data.suggested.length);
+}
+/* The page's shape in grey blocks, for the first load with nothing saved. */
+function drawSkeleton() {
+  const line = (w, h = 12) => `<div class="skel" style="width:${w};height:${h}px"></div>`;
+  const card = (rows) => `<div class="skelcard">${line("40%", 16)}${Array.from({ length: rows }, (_, i) => line(`${90 - (i % 3) * 15}%`)).join("")}</div>`;
+  if (!data) $("#side").innerHTML = `<div style="display:flex;flex-direction:column;gap:14px;padding:8px">${line("70%", 22)}${line("100%", 40)}${Array.from({ length: 6 }, () => line("80%", 16)).join("")}</div>`;
+  $("#main").innerHTML = `<div class="grid" aria-busy="true" aria-label="Loading"><div class="s12" style="display:flex;flex-direction:column;gap:10px">${line("28%", 30)}${line("55%")}</div>
+    <div class="s12" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(420px,100%),1fr));gap:16px">${card(4)}${card(3)}${card(5)}${card(3)}</div></div>${updatingPill()}`;
+}
+const updatingPill = () => (stale ? `<div class="updating" role="status"><span class="spin" aria-hidden="true"></span>Updating…</div>` : "");
 async function savePlanInput() {
   const input = $("[data-plan-input]"); if (!input) return;
   const text = input.value.trim();
@@ -2055,6 +2118,8 @@ document.addEventListener("click", async (e) => {
   try {
     if (el.dataset.rulesBack) { el.disabled = true; await api("/api/rules", { repo, tool: el.dataset.rulesBack, on: true }); toast("Put back. Its agents are told your lessons again from their next chat."); await refresh(); return; }
     if (el.dataset.planBranch && el.dataset.tab === "plan" && el.dataset.planBranch !== data.plan?.branch) { planBranch = el.dataset.planBranch; tab = "plan"; runPage = null; rememberPick(); await refresh(); window.scrollTo(0, 0); return; }
+    if (el.dataset.aiRetry !== undefined) { el.disabled = true; await api("/api/ai-retry", {}); toast("muninn will try your AI again on its next step."); await refresh(); return; }
+    if (el.dataset.aiSwitch) { el.disabled = true; await api("/api/settings", { writer: el.dataset.aiSwitch }); toast(`AI steps now use ${el.dataset.aiSwitch === "codex" ? "Codex" : "Claude Code"}. Change it back in Settings.`); await refresh(); return; }
     if (el.dataset.prWhy !== undefined) { prOpen = !prOpen; prErr = ""; draw(); return; }
     if (el.dataset.prWrite !== undefined) { await writePrWhy(); return; }
     if (el.dataset.prCopy !== undefined) { await navigator.clipboard.writeText(prWhyFor[prKey()]?.text || ""); prCopied = true; draw(); return; }
@@ -2292,7 +2357,7 @@ document.addEventListener("change", (e) => {
     return;
   }
   if (e.target.id === "histRoutine") { hist.routine = e.target.checked; $("#histList").innerHTML = histList(); return; }
-  if (e.target.dataset.repoPick !== undefined) { repo = e.target.value; impactFor = null; runPage = null; if (!repo && tab === "plan") tab = null; week = null; if (!asking) { askThread = []; askThreadId = null; } open = null; sel = null; planBranch = null; refresh(); }
+  if (e.target.dataset.repoPick !== undefined) { repo = e.target.value; impactFor = null; impact = readImpact(repo); runPage = null; if (!repo && tab === "plan") tab = null; week = null; if (!asking) { askThread = []; askThreadId = null; } open = null; sel = null; planBranch = null; refresh(); }
   if (e.target.id === "writerPick") { api("/api/settings", { writer: e.target.value }).then(async () => { data.prefs = await api("/api/settings?" + q({ repo })); draw(); toast("Saved."); }); return; }
   if (e.target.id === "planBranch") { planBranch = e.target.value; planEdit = null; Object.assign(hist, { area: "All", q: "", open: {}, limit: 8 }); refresh(); }
 });

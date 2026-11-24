@@ -2,7 +2,7 @@ import { createInterface } from "node:readline/promises";
 import { isPaused, settings } from "../config.js";
 import { loadEmbedder, modelCached, MODEL_SIZE, MODEL_SOURCE } from "../embed/model.js";
 import { learnRepo } from "../learn/pipeline.js";
-import { pickRunner, pickWriter, saveUsage } from "../learn/writer.js";
+import { aiOut, aiOutWords, pickRunner, pickWriter, saveUsage } from "../learn/writer.js";
 import { fillExplanations } from "../learn/explain.js";
 import { latestHandoff, makeHandoff, needsHandoff } from "../handoff/handoff.js";
 import { scanLogs } from "../logs/discover.js";
@@ -69,7 +69,8 @@ async function learnInner(opts: { allRepos?: boolean; auto?: boolean; noReview?:
   if (!count) { if (!opts.auto) console.log("Nothing to learn from yet. Work with Claude Code, Codex, Cursor or Antigravity as usual: muninn reads each session on its own soon after it ends, and suggestions appear in muninn ui."); return 0; }
 
   const writer = pickWriter();
-  if (!opts.auto) console.log(writer ? `Redacted excerpts will go to your ${writer.name === "claude" ? "Claude Code" : "Codex"} to write lessons.` : "No Claude Code or Codex client found, so only repeated instructions can become lessons.");
+  const out = aiOut();
+  if (!opts.auto) console.log(writer ? `Redacted excerpts will go to your ${writer.name === "claude" ? "Claude Code" : "Codex"} to write lessons.` : out ? `${aiOutWords(out)} This scan finds only things you said word for word more than once; the rest waits for a scan after that.` : "No Claude Code or Codex client found, so only repeated instructions can become lessons.");
 
   if (!modelCached()) {
     if (opts.auto) return 0;

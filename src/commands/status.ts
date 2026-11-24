@@ -82,9 +82,10 @@ export async function status() {
     rows.push(!ch.length ? { m: "need", name: "Codex", text: "not connected", fix: "muninn install" } : t ? { m: "ok", name: "Codex", text: `working · last told ${when(t)}` } : { m: "skip", name: "Codex", text: "hooks added, not checked live yet", why: "Codex runs them only after you trust them in its /hooks" });
   }
   // What writes lessons: the claude (or codex) command.
-  const { pickRunner } = await import("../learn/writer.js");
-  const runner = pickRunner("judge");
-  if (runner) {
+  const { pickRunner, aiOut, aiOutWords } = await import("../learn/writer.js");
+  const runner = pickRunner("judge"); const aiPause = aiOut();
+  if (runner && aiPause?.provider === runner.name) rows.push({ m: "need", name: "Your Claude", text: aiOutWords(aiPause), why: `it said: "${aiPause.reason.slice(0, 120)}"`, fix: "muninn learn (once it's back, to catch up)" });
+  else if (runner) {
     const { spawnSync } = await import("node:child_process");
     const v = spawnSync(runner.name, ["--version"], { encoding: "utf8", timeout: 4000 }).stdout?.trim().split(/\s/)[0];
     rows.push({ m: "ok", name: "Your Claude", text: `${runner.name}${v ? ` ${v}` : ""}, writes your lessons` });
