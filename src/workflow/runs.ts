@@ -13,6 +13,8 @@ import { spanOf, type Session } from "../logs/types.js";
  */
 export type RunSession = {
   id: string; tool: string; role: string; branch: string | null; worktree: string | null; parent_session: string | null; agent_type: string | null;
+  /** A separate session another one started in the desktop app: the starting session's id. */
+  launched_by?: string;
   started_at: string; ended_at: string; tokens_in: number; tokens_out: number; cache_read: number; model: string | null;
   commands: number; failed_commands: number; task: string | null;
   /** Messages the engineer typed: 0 for a session that ran on its own. */
@@ -85,9 +87,44 @@ export function roleFromTask(task: string | undefined): string | null {
   return null;
 }
 const GENERIC = new Set(["general-purpose", "subagent", "fork", "agent", "workflow-subagent"]);
+/** A worktree name the desktop app made up ("mystifying-payne-2e557b"): it says nothing about the work. */
+export const MADE_UP = /^[a-z]+-[a-z]+-[0-9a-f]{6}$/;
+/**
+ * A session that directed others: it started sessions in the desktop app, or sent instructions to two or more agents.
+ * Its role is "coordinator" rather than "main".
+ */
+export const coordinates = (s: Session) => !!s.launches?.length || new Set((s.messages ?? []).filter((m) => m.dir === "out" && s.tool === "claude-code").flatMap((m) => m.to)).size >= 2;
+/** A top-level session in a worktree: the name it was started with, else a readable worktree or branch name, else "side session". */
+function topRole(s: Session): string | null {
+  if (s.launchedAs) return s.launchedAs;
+  const wt = worktreeOf(s.cwd);
+  if (!wt) return null;
+  if (!MADE_UP.test(wt)) return wt;
+  const branch = s.branch?.replace(/^[\w-]+\//, "");
+  if (branch && branch !== wt && !MADE_UP.test(branch)) return branch;
+  return roleFromTask(s.events.find((e) => e.k === "typed")?.text) ?? "side session";
+}
 export const roleOf = (s: Session) => s.teammate ?? (s.parent
   ? ((!s.agentType || GENERIC.has(s.agentType) ? roleFromTask(s.workflow?.label ?? s.task) : null) ?? s.agentType ?? worktreeOf(s.cwd) ?? "subagent")
-  : worktreeOf(s.cwd) ?? "main");
+  : topRole(s) ?? ((s.coordinator ?? coordinates(s)) ? "coordinator" : "main"));
+
+/**
+ * Links each session started from the desktop app to the session that started it. The app doesn't log the new
+ * session's own id, so the link is by time: a top-level session in another folder whose log begins within two
+ * minutes after the start. Pure apart from setting launchedAs and launchedBy.
+ */
+export function linkLaunched(sessions: Session[]) {
+  const tops = sessions.filter((s) => !s.parent);
+  for (const s of tops) s.coordinator = coordinates(s);
+  const first = new Map(tops.map((s) => [s.id, [...s.events.map((e) => e.ts), ...(s.turns ?? []).map((t) => t.ts)].filter(Boolean).sort()[0] ?? ""]));
+  const launches = tops.flatMap((s) => (s.launches ?? []).map((l) => ({ ...l, by: s }))).sort((a, b) => a.ts.localeCompare(b.ts));
+  for (const l of launches) {
+    const t = Date.parse(l.ts);
+    const hit = tops.filter((c) => c !== l.by && !c.launchedBy && c.cwd !== l.by.cwd && first.get(c.id))
+      .map((c) => ({ c, d: Date.parse(first.get(c.id)!) - t })).filter((x) => x.d >= -5_000 && x.d <= 120_000).sort((a, b) => a.d - b.d)[0];
+    if (hit) { hit.c.launchedBy = l.by.id; hit.c.launchedAs = l.name || l.title || undefined; }
+  }
+}
 
 /** Claude Code agent teams: names teammates' sessions from muninn's team hooks, and adds the tasks they finished as handoffs. */
 export async function teamFacts(db: Client): Promise<{ names: Map<string, string>; done: { session: string; teammate: string | null; subject: string; ts: string }[] }> {
@@ -121,7 +158,7 @@ type Slice = { s: Session; start: string; end: string };
 const inSlice = (ts: string, from: string, to: string) => ts >= from && ts <= to;
 /** A session cut into bursts of activity: a quiet gap longer than RUN_GAP_MS ends a burst. */
 function bursts(s: Session): Slice[] {
-  const ts = s.events.map((e) => e.ts).concat((s.turns ?? []).map((t) => t.ts)).filter(Boolean).sort();
+  const ts = s.events.map((e) => e.ts).concat((s.turns ?? []).map((t) => t.ts), (s.messages ?? []).map((m) => m.ts), (s.launches ?? []).map((l) => l.ts)).filter(Boolean).sort();
   const out: Slice[] = [];
   for (const t of ts) {
     const cur = out.at(-1);
@@ -132,6 +169,9 @@ function bursts(s: Session): Slice[] {
 /** A session limited to a slice of time. */
 const sliceOf = (s: Session, from: string, to: string): Session => ({
   ...s, events: s.events.filter((e) => inSlice(e.ts, from, to)), turns: (s.turns ?? []).filter((t) => inSlice(t.ts, from, to)),
+  // A message belongs to the run it was sent in, not to every run its session took part in.
+  ...(s.messages ? { messages: s.messages.filter((m) => inSlice(m.ts, from, to)) } : {}),
+  ...(s.launches ? { launches: s.launches.filter((l) => inSlice(l.ts, from, to)) } : {}),
 });
 
 function toRunSession(s: Session): RunSession {
@@ -142,6 +182,7 @@ function toRunSession(s: Session): RunSession {
   const t1 = [end, turns.at(-1)?.ts].filter(Boolean).sort().at(-1) ?? "";
   return {
     id: s.id, tool: s.tool, role: roleOf(s), branch: s.branch ?? null, worktree: s.parent ? null : worktreeOf(s.cwd), parent_session: s.parent ?? null, agent_type: s.agentType ?? null,
+    ...(s.launchedBy ? { launched_by: s.launchedBy } : {}),
     started_at: t0, ended_at: t1, tokens_in: turns.reduce((n, t) => n + t.input, 0), tokens_out: turns.reduce((n, t) => n + t.output, 0), cache_read: turns.reduce((n, t) => n + (t.cacheRead ?? 0), 0), model: s.model ?? null,
     commands: cmds.length, failed_commands: cmds.filter((e) => e.k === "cmd" && e.failed).length, task: s.task?.slice(0, 300) ?? null,
     typed: s.events.filter((e) => e.k === "typed").length,
@@ -156,6 +197,11 @@ function toRunSession(s: Session): RunSession {
  * Pure: no database.
  */
 export function buildRuns(repo: string, sessions: Session[]): Run[] {
+  linkLaunched(sessions);
+  // Every session and subagent in the repo, so a message to an agent working in another run still names its role.
+  const everyone = sessions.flatMap((s) => [s, ...(s.subagents ?? [])]);
+  const byId = new Map(everyone.map((s) => [s.id, s]));
+  const byLocal = new Map(sessions.flatMap((s) => (s.launches ?? []).filter((l) => l.localId).map((l) => [l.localId!, sessions.find((x) => x.launchedBy === s.id && x.launchedAs === (l.name || l.title))] as const)).filter((x): x is [string, Session] => !!x[1]));
   // Subagents' own activity keeps a run going: a session that waits while a workflow or its subagents work is still in that run.
   const slices = sessions.flatMap((s) => [s, ...(s.subagents ?? [])]).flatMap(bursts).sort((a, b) => a.start.localeCompare(b.start));
   const groups: Slice[][] = [];
@@ -187,6 +233,12 @@ export function buildRuns(repo: string, sessions: Session[]): Run[] {
     const handoffs: Handoff[] = []; let bounces = 0;
     const roleById = new Map(rs.map((r) => [r.id, r.role]));
     for (const r of rs) if (r.parent_session) handoffs.push({ from_role: roleById.get(r.parent_session) ?? "main", to_role: r.role, at: r.started_at, kind: "started", evidence: r.task?.replace(/\s+/g, " ").slice(0, 200) || undefined });
+    for (const r of rs) if (r.launched_by) {
+      const by = byId.get(r.launched_by), l = by?.launches?.find((x) => (x.name || x.title) === r.role);
+      // Only in the run it was started in: a session that keeps working into later runs wasn't started again.
+      if (l && !inSlice(l.ts, from, to)) continue;
+      handoffs.push({ from_role: roleById.get(r.launched_by) ?? (by ? roleOf(by) : "coordinator"), to_role: r.role, at: r.started_at, kind: "started", evidence: l?.title || undefined });
+    }
     const order = (list: RunSession[]) => { const seen: string[] = []; for (const r of list) { if (seen.length && seen.at(-1) !== r.role && seen.includes(r.role)) bounces++; if (seen.at(-1) !== r.role) seen.push(r.role); } };
     order(rs.filter((r) => r.parent_session));
     const swarm = all.some((x) => x.messages?.some((m) => m.dir === "out"));
@@ -217,8 +269,13 @@ export function buildRuns(repo: string, sessions: Session[]): Run[] {
       if (m.dir !== "out") continue;
       const from = roleOf(x);
       // A recipient named by agent id (a subagent the session resumes) is shown by that agent's role.
-      const to = m.to.map((r) => { const hit = all.find((y) => y.id === r || y.id === `agent-${r}`); return hit ? roleOf(hit) : r; }).filter((r) => r !== from && r !== "coordinator");
-      const kind: Handoff["kind"] = /\bAPPROVE[D]?\b|LGTM|\[approved?\]|\b(QA|CHECK|ACCEPTANCE|TESTS?) PASS(ED)?\b/i.test(m.text) && !/\bnot approved?\b/i.test(m.text) ? "approved" : REJECTS.test(m.text) || /\[blocked\]/i.test(m.text) ? "review_rejected" : /follow-?up/i.test(m.text) ? "rework" : "handoff";
+      const to = m.to.map((r) => {
+        const hit = all.find((y) => y.id === r || y.id === `agent-${r}`) ?? byId.get(r) ?? byId.get(`agent-${r}`) ?? byLocal.get(r);
+        return hit ? roleOf(hit) : r.startsWith("local_") ? "another session" : /^a?[0-9a-f]{16,}$/.test(r) ? "a subagent" : r;
+      }).filter((r) => r !== from && r !== "coordinator");
+      let kind: Handoff["kind"] = /\bAPPROVE[D]?\b|LGTM|\[approved?\]|\b(QA|CHECK|ACCEPTANCE|TESTS?) PASS(ED)?\b/i.test(m.text) && !/\bnot approved?\b/i.test(m.text) ? "approved" : REJECTS.test(m.text) || /\[blocked\]/i.test(m.text) ? "review_rejected" : /follow-?up/i.test(m.text) ? "rework" : "handoff";
+      // A coordinator telling an agent to hold or not merge is an instruction, not a review sending work back.
+      if (from === "coordinator" && kind === "review_rejected") kind = "handoff";
       handoffs.push({ from_role: from, to_role: to.length > 2 ? "everyone" : to.join(", ") || "board", at: m.ts, kind, note: (kind === "rework" ? m.text.split("\n").find((l) => /follow-?up/i.test(l)) ?? m.text : m.text).replace(/^["\s]+/, "").replace(/(@[\w-]+\s*)+/, "").replace(/\s+/g, " ").slice(0, 160), evidence: m.text.replace(/^["\s]+/, "").replace(/(@[\w-]+\s*)+/, "").replace(/\s+/g, " ").slice(0, 200) });
     }
     // A workflow's own log lines say when a check round sent work back ("Round 1: 3 blocking").

@@ -41,6 +41,12 @@ export type Session = {
   workflowRuns?: WorkflowRun[];
   /** Subagents this session started, read from their own logs. */
   subagents?: Session[];
+  /** Separate sessions this one started in the Claude desktop app (its start_session tool): when, and the name and title it gave each. */
+  launches?: { ts: string; name: string; title: string; localId?: string }[];
+  /** For a session another one started that way: the name it was given ("m10-foundations") and the starting session's id. Set by runs. */
+  launchedAs?: string; launchedBy?: string;
+  /** Whether this session directed others over its whole life, so each slice of it gets the same role. Set by runs. */
+  coordinator?: boolean;
 };
 /** First and last time a session did anything. */
 export const spanOf = (s: Session): { start: string; end: string } => {

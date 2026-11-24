@@ -170,3 +170,49 @@ describe("role names from tasks", () => {
     expect(roleFromTask("coder-fix:step-4:r2")).toBe("coder-fix");
   });
 });
+
+describe("sessions one session started and directed", () => {
+  const root = "/no-git/wb";
+  it("reads a desktop session start from the log, only when one started", () => {
+    const f = join(tmp(), "proj", "coord.jsonl");
+    write(f, [
+      { type: "assistant", cwd: root, timestamp: T(0), message: { id: "m1", content: [
+        { type: "tool_use", id: "s1", name: "mcp__ccd_session__start_session", input: { title: "Milestone 10", name: "m10-foundations" } },
+        { type: "tool_use", id: "s2", name: "mcp__ccd_session__start_session", input: { title: "Just an idea", initiation: "own_initiative" } },
+      ] } },
+      { type: "user", timestamp: T(0), message: { role: "user", content: [
+        { type: "tool_result", tool_use_id: "s1", content: [{ type: "text", text: "Started session \"Milestone 10\" (session_id: local_abc-1, name: m10-foundations). It runs on its own." }] },
+        { type: "tool_result", tool_use_id: "s2", content: [{ type: "text", text: "Proposed \"Just an idea\" (task_id: task_1)." }] },
+      ] } },
+    ]);
+    expect(readClaude(f).launches).toEqual([{ ts: T(0), name: "m10-foundations", title: "Milestone 10", localId: "local_abc-1" }]);
+  });
+
+  it("names the starter coordinator and the started session by its name, with a started edge in that run only", () => {
+    const coord = session("c", root, [0, 5, 100], { launches: [{ ts: T(1), name: "m10-foundations", title: "Milestone 10", localId: "local_x" }] });
+    const child = session("k", `${root}/.claude/worktrees/mystifying-payne-2e557b`, [2, 20, 100]);
+    const runs = buildRuns("r", [coord, child]);
+    expect(runs).toHaveLength(2);
+    expect(runs[0]!.roles.sort()).toEqual(["coordinator", "m10-foundations"]);
+    expect(runs[0]!.handoffs).toContainEqual(expect.objectContaining({ kind: "started", from_role: "coordinator", to_role: "m10-foundations", evidence: "Milestone 10" }));
+    expect(runs[1]!.handoffs.filter((h) => h.kind === "started")).toEqual([]);
+  });
+
+  it("never shows a made-up worktree name as a role", () => {
+    expect(roleOf(session("x", `${root}/.claude/worktrees/vibrant-dubinsky-9459df`, [0], { branch: "claude/vibrant-dubinsky-9459df" }))).toBe("side session");
+    expect(roleOf(session("y", `${root}/.claude/worktrees/vibrant-dubinsky-9459df`, [0], { branch: "feat/fast-ingest" }))).toBe("fast-ingest");
+    expect(roleOf(session("z", `${root}/.worktrees/builder`, [0]))).toBe("builder");
+  });
+
+  it("counts a message only in the run it was sent in, and a coordinator's hold is not a send-back", () => {
+    const msg = { ts: T(200), dir: "out" as const, from: null, to: ["a12c31e9995aefda6", "a0810ed35d033c62b"], text: "Coordinator: please don't merge any more UI PRs until #39 lands" };
+    const coord = session("c", root, [0, 5, 200], { messages: [msg] });
+    const sub = session("agent-a12c31e9995aefda6", root, [1, 3], { parent: "c", agentType: "general-purpose", task: "Builder: UI pass" });
+    coord.subagents = [sub];
+    const runs = buildRuns("r", [coord]);
+    expect(runs).toHaveLength(2);
+    expect(runs[0]!.handoffs.filter((h) => h.kind !== "started")).toEqual([]);
+    const sent = runs[1]!.handoffs.filter((h) => h.kind !== "started");
+    expect(sent).toEqual([expect.objectContaining({ kind: "handoff", from_role: "coordinator", to_role: "builder, a subagent" })]);
+  });
+});

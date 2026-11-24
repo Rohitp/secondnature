@@ -21,6 +21,9 @@ export function readClaude(file: string): Session {
   const turns: { ts: string; input: number; output: number; cacheRead?: number }[] = [];
   let task = "";
   const messages: AgentMessage[] = [];
+  // Sessions this one asked the desktop app to start, until the result says whether one started.
+  const launchCalls = new Map<string, { ts: string; name: string; title: string }>();
+  const launches: NonNullable<Session["launches"]> = [];
   // What each tool call asked for, until its result arrives: a shell command, or a file tool and the path it named.
   const pending = new Map<string, { cmd: string } | { tool: string; path: string; pattern?: string; part?: boolean; range?: string }>();
   let cwd = "", clientVersion = "unknown", unknown = 0, branch = "";
@@ -62,6 +65,12 @@ export function readClaude(file: string): Session {
       for (const x of Array.isArray(c) ? c : []) {
         if (x?.type === "text" && INTERRUPTED.test(x.text ?? "")) events.push({ k: "interrupt", ts });
         else if (x?.type === "text" && !notTyped(x.text ?? "")) events.push({ k: "typed", text: stripPrivate(x.text), ts });
+        if (x?.type === "tool_result" && launchCalls.has(x.tool_use_id)) {
+          // "Started session "Milestone 10" (session_id: local_…, name: m10-foundations)". A proposal that nobody started isn't a launch.
+          const call = launchCalls.get(x.tool_use_id)!, said = textOf(x.content);
+          const m = said.match(/^\s*Started session "([^"]*)" \(session_id: (local_[\w-]+)(?:, name: ([\w.-]+))?/);
+          if (m) launches.push({ ts: call.ts || ts, name: m[3] ?? call.name, title: m[1] || call.title, localId: m[2] });
+        }
         if (x?.type === "tool_result" && pending.has(x.tool_use_id)) {
           const r = o.toolUseResult ?? {};
           const call = pending.get(x.tool_use_id)!;
@@ -82,6 +91,7 @@ export function readClaude(file: string): Session {
     }
     if (o.type === "assistant") for (const x of Array.isArray(c) ? c : []) {
       if (x?.type === "text") events.push({ k: "agent", text: x.text ?? "", ts });
+      if (x?.type === "tool_use" && /(^|__)start_session$/.test(String(x.name)) && ts) launchCalls.set(x.id, { ts, name: String(x.input?.name ?? ""), title: String(x.input?.title ?? "") });
       if (x?.type === "tool_use" && x.name === "Bash") pending.set(x.id, { cmd: x.input?.command ?? "" });
       // A message to a teammate (agent teams). The field names aren't documented, so the likely ones are tried.
       if (x?.type === "tool_use" && x.name === "SendMessage") {
@@ -94,7 +104,7 @@ export function readClaude(file: string): Session {
       if (typeof path === "string" && path) pending.set(x.id, { tool: String(x.name).toLowerCase(), path, ...(typeof x.input?.pattern === "string" ? { pattern: x.input.pattern } : {}), ...(x.input?.offset != null || x.input?.limit != null ? { part: true, range: `${x.input?.offset ?? 1}+${x.input?.limit ?? ""}` } : {}) });
     }
   }
-  const base: Session = { id: sessionIdOf(file), tool: "claude-code", cwd, clientVersion, events, unknown, branch: branch || undefined, file, usage, turns, ...(model ? { model } : {}), ...(messages.length ? { messages } : {}) };
+  const base: Session = { id: sessionIdOf(file), tool: "claude-code", cwd, clientVersion, events, unknown, branch: branch || undefined, file, usage, turns, ...(model ? { model } : {}), ...(messages.length ? { messages } : {}), ...(launches.length ? { launches } : {}) };
   if (!sub) return base;
   let meta: { agentType?: string; description?: string; name?: string; workflowPhase?: string; inWorkflowRun?: boolean } = {};
   const metaFile = join(dirname(file), `${sessionIdOf(file)}.meta.json`);
