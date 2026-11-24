@@ -71,7 +71,9 @@ async function planView(db: Client, repo: string, branch: string | null) {
   const branches = await planBranches(db, repo, root);
   if (!branches.some((x) => x.name === b)) branches.unshift({ name: b, open: 0, merged: false });
   const { getHistory } = await import("../plan/history.js");
-  return { branch: b, checkedOut, branches, plan: await getPlan(db, repo, b), history: await getHistory(db, repo, b), fileOn: await planFileOn(db, repo) };
+  const { workingNow } = await import("../plan/live.js");
+  const working = await workingNow(db, repo, b).catch(() => []);
+  return { branch: b, checkedOut, branches, plan: await getPlan(db, repo, b), history: await getHistory(db, repo, b), fileOn: await planFileOn(db, repo), working };
 }
 
 /** Whether AI steps are paused for lack of usage: what to say, until when, and the other client the engineer could switch to. */

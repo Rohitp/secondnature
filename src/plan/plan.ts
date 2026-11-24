@@ -91,26 +91,36 @@ export async function applyPending(db: Client, runner: Runner, limit = 6): Promi
 }
 
 /** The plan as agents read it at session start: short, and labelled as muninn's summary. */
-export function planText(plan: Plan, repoShort: string, branch: string): string | null {
-  if (!plan.goal && !plan.status && !plan.open.length && !plan.decisions.length) return null;
+export function planText(plan: Plan, repoShort: string, branch: string, working: string[] = []): string | null {
+  if (!plan.goal && !plan.status && !plan.open.length && !plan.decisions.length && !working.length) return null;
   const date = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
   const lines = [`The plan for branch ${branch} of ${repoShort}, kept by muninn from earlier sessions on this branch and edited by the engineer. Check it against the code:`];
   if (plan.goal) lines.push(`Goal: ${plan.goal.text}`);
   if (plan.status) lines.push(`Where it stands (${date(plan.status.at)}): ${plan.status.text}`);
+  if (working.length) lines.push("Working now (other agents running in this repo; don't redo their work):", ...working.slice(0, 8));
   if (plan.open.length) lines.push("Next:", ...plan.open.slice(0, 5).map((o) => `- ${o.text}`));
   if (plan.decisions.length) lines.push("Recent decisions:", ...plan.decisions.slice(0, 3).map((d) => `- (${date(d.created_at)}) ${d.text}`));
   return lines.join("\n");
 }
 
-/** The plan as a Markdown file, for people who want it in the repo. */
-export function planMarkdown(plan: Plan, repoShort: string, branch = ""): string {
+/** Done items shown in the Markdown plan: the last few days, at most this many. muninn ui shows them all. */
+export const DONE_SHOWN = { days: 7, max: 10 };
+/** The plan as a Markdown file, for people who want it in the repo, and for agents through get_plan. `working` is the
+ * Working now section, as lines; left out of PLAN.md because it's out of date as soon as it's committed. */
+export function planMarkdown(plan: Plan, repoShort: string, branch = "", working: string[] | null = null, at = Date.now()): string {
   const date = (iso: string) => iso.slice(0, 10);
   const out = [`# Plan: ${repoShort}${branch ? `, branch ${branch}` : ""}`, "", "_Kept by muninn from your coding sessions, and edited by you in muninn ui. Changes made here are overwritten; edit in muninn ui instead._", ""];
   out.push("## Goal", "", plan.goal ? plan.goal.text : "_Not set yet._", "");
   out.push("## Where it stands", "", plan.status ? plan.status.text : "_Not written yet._", "");
+  if (working) out.push("## Working now", "", ...(working.length ? working : ["_Nothing running in this repo right now._"]), "");
   out.push("## Next", "", ...(plan.open.length ? plan.open.map((o) => `- [ ] ${o.text}`) : ["_Nothing open._"]), "");
   out.push("## Decisions", "", ...(plan.decisions.length ? plan.decisions.map((d) => `- ${date(d.created_at)}: ${d.text}`) : ["_None yet._"]), "");
-  out.push("## Done", "", ...(plan.done.length ? plan.done.slice(0, 30).map((d) => `- [x] ${d.text}${d.closed_at ? ` (${date(d.closed_at)})` : ""}`) : ["_Nothing yet._"]), "");
+  const since = new Date(at - DONE_SHOWN.days * 86_400_000).toISOString();
+  const shown = plan.done.filter((d) => (d.closed_at ?? d.created_at) >= since).slice(0, DONE_SHOWN.max);
+  const older = plan.done.length - shown.length;
+  out.push("## Done", "", ...(shown.length ? shown.map((d) => `- [x] ${d.text}${d.closed_at ? ` (${date(d.closed_at)})` : ""}`) : [plan.done.length ? `_Nothing in the last ${DONE_SHOWN.days} days._` : "_Nothing yet._"]));
+  if (older > 0) out.push("", `_${older} older done item(s) not shown; muninn ui has them all._`);
+  out.push("");
   return out.join("\n");
 }
 const fileKey = (repo: string) => `plan_file:${repo}`;

@@ -66,7 +66,7 @@ export function worktreeOf(cwd: string): string | null {
 /** Job words a task can open with, and the role each means. */
 const JOBS: [RegExp, string][] = [
   [/^re-?review/, "reviewer"], [/^review/, "reviewer"], [/^build|^implement/, "builder"], [/^test/, "tester"], [/^fix/, "fixer"],
-  [/^verif/, "verifier"], [/^research|^investigat|^explor/, "researcher"], [/^check/, "checker"], [/^plan/, "planner"], [/^design/, "designer"], [/^audit/, "auditor"],
+  [/^verif/, "verifier"], [/^qa\b/, "qa"], [/^research|^investigat|^explor/, "researcher"], [/^check/, "checker"], [/^plan/, "planner"], [/^design/, "designer"], [/^audit/, "auditor"],
 ];
 /**
  * A general-purpose subagent's real job, from how its task opens: "Builder: …" is a builder, "Re-review the fix

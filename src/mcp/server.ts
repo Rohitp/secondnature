@@ -21,7 +21,7 @@ import { recordQuery, toolFromClient } from "../store/queries.js";
 const VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 const repoArg = { type: "string", description: "A repo's name as muninn lists it (for example \"servanda\"). Leave out for the repo the chat is running in, if any, else all repos." };
 // Each description opens with when to call it, in the moments an agent is in, because that's what makes an agent reach
-// for a tool: "the engineer says 'last time'", not "searches the history". All are local and fast; only two write anything.
+// for a tool: "the engineer says 'last time'", not "searches the history". All are local and fast; only three write anything.
 const READ = { readOnlyHint: true, openWorldHint: false } as const;
 export const TOOLS = [
   {
@@ -95,6 +95,18 @@ export const TOOLS = [
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   },
   {
+    name: "plan_note",
+    title: "Say what an agent is doing now",
+    description: "Use this while running long work with other agents (sessions you started, subagents, workflows, a builder/reviewer team), so the engineer can read what each one is doing without asking you: when you start one, when one finishes, when one is blocked or needs the engineer, and when what one is doing changes. One plain sentence per agent, saying what it is doing and why, as you'd tell a colleague who just walked in (\"Building the Budget screen; the Overview screen is merged.\"), not a log line. Its newest note replaces its older one, and shows under Working now in the branch's plan (get_plan, muninn ui). Also for yourself, with your own role as who (\"coordinator\").",
+    inputSchema: { type: "object", properties: {
+      who: { type: "string", description: "The agent: the name you gave the session or subagent when you started it (\"m12-ui-library\", \"reviewer\"), or your own role." },
+      text: { type: "string", description: "One plain sentence, under 200 characters." },
+      state: { type: "string", enum: ["working", "blocked", "waiting", "done"], description: "waiting: it needs the engineer. blocked: it's stuck on something else. Default working." },
+      repo: repoArg, branch: { type: "string", description: "The plan to add it to. Leave out for the branch checked out here, which for a coordinator is the plan the engineer reads." },
+    }, required: ["who", "text"] },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  {
     name: "review_lesson",
     title: "Keep, dismiss or fold in a suggested lesson",
     description: "Keep or dismiss a lesson waiting for the engineer's review, by the id list_lessons shows, or add it to the older lesson list_lessons says it is close to. Only when the engineer has said, in this chat, to do that to that specific lesson: never on your own judgement, and never for several lessons from one general instruction. Keeping makes agents be told it, with muninn's usual choice of when (every session, or on a keyword). add_to_older retires the suggestion and changes the older lesson, which keeps where it's told: if that lesson is told in every repo, the change reaches every repo, so say so and agree its new wording with the engineer first.",
@@ -116,6 +128,7 @@ export const MCP_INSTRUCTIONS = [
   "- Unsure how the engineer wants something done: list_lessons.",
   "- About to undo something decided on purpose: get_related.",
   "- They ask for something to be remembered: suggest_lesson (they review it first).",
+  "- Running long work with other agents (sessions you started, subagents, workflows): plan_note when one starts, finishes, is blocked or needs the engineer, one plain sentence each, so the engineer can see what's going on without asking.",
 ].join("\n");
 type Args = Record<string, unknown>;
 /** The installed package's version, for the server's own info. */
@@ -206,7 +219,21 @@ export async function callTool(db: Client, name: string, a: Args, embed: () => P
     const branch = typeof a.branch === "string" && a.branch ? a.branch : (currentBranch(process.cwd()) && repoIdentity(process.cwd()) === repo ? currentBranch(process.cwd())! : "main");
     const plan = await getPlan(db, repo, branch);
     found.push({ kind: "plan", id: `${repo}#${branch}` });
-    return planMarkdown(plan, repo.split("/").pop() ?? repo, branch);
+    const { workingNow, workingLines } = await import("../plan/live.js");
+    const working = await workingNow(db, repo, branch).then(workingLines).catch(() => []);
+    return planMarkdown(plan, repo.split("/").pop() ?? repo, branch, working);
+  }
+  if (name === "plan_note") {
+    if (!repo) throw new Error("Say which repo: the chat isn't running inside one.");
+    const { setNote, NOTE_STATES } = await import("../plan/live.js");
+    const who = String(a.who ?? "").trim(); const text = String(a.text ?? "").trim();
+    if (!who) throw new Error("Say who the note is about: the name you gave the session or subagent, or your own role.");
+    if (text.length < 8) throw new Error("Write one plain sentence on what it is doing.");
+    const state = NOTE_STATES.includes(a.state as never) ? (a.state as (typeof NOTE_STATES)[number]) : "working";
+    const branch = typeof a.branch === "string" && a.branch ? a.branch : (currentBranch(process.cwd()) && repoIdentity(process.cwd()) === repo ? currentBranch(process.cwd())! : "main");
+    await setNote(db, { repo_id: repo, branch, who, state, text });
+    found.push({ kind: "plan", id: `${repo}#${branch}` });
+    return `Noted under Working now in the ${branch} plan: ${who}${state === "working" ? "" : ` (${state})`}: ${text.slice(0, 240)}`;
   }
   if (name === "get_related") {
     const e = await embed();
@@ -256,7 +283,14 @@ export async function callTool(db: Client, name: string, a: Args, embed: () => P
     const when = d.route === "always" ? "every session" : d.route === "keyword" && d.keywords.length ? `when "${d.keywords.join('", "')}" comes up` : "only when searched";
     return `Kept: "${l.text.slice(0, 120)}". Agents are told it ${when}${l.role ? `, the ${l.role} only` : ""}${d.global ? ", in every repo" : ""}. Change it in muninn ui.`;
   }
-  if (name === "get_runs") return runsText(db, repo, { limit: typeof a.limit === "number" ? a.limit : 5, all: a.include_single === true }, found);
+  if (name === "get_runs") {
+    const past = await runsText(db, repo, { limit: typeof a.limit === "number" ? a.limit : 5, all: a.include_single === true }, found);
+    if (!repo) return past;
+    // Runs are put together when muninn reads the logs after sessions end, so one still going isn't in them yet.
+    const { workingNow, workingLines } = await import("../plan/live.js");
+    const now = await workingNow(db, repo, null).then(workingLines).catch(() => []);
+    return now.length ? `RUNNING NOW (not in the runs below until it ends):\n${now.join("\n")}\n\n${past}` : past;
+  }
   if (name === "list_lessons") return lessonsText(db, repo, a.waiting === true, found);
   if (name === "where_left_off") {
     if (!repo) throw new Error("Say which repo: the chat isn't running inside one.");
