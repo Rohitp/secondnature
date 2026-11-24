@@ -41,14 +41,14 @@ export const TOOLS = [
   {
     name: "where_left_off",
     title: "Where the last session left off",
-    description: "Call this at the start of work on a branch, or after the conversation was compressed, before planning anything: it says what the last coding-agent session on the branch was doing, what it finished, what was left, and what it was about to do next. Also when the engineer asks \"where are we?\" or \"what's next?\".",
+    description: "Call this at the start of work on a branch, or after the conversation was compressed, before planning anything, then get_plan: it says what the last coding-agent session on the branch was doing, what it finished, what was left, and what it was about to do next. Also when the engineer asks \"where are we?\" or \"what's next?\". Once you pick the work up, say so with plan_note.",
     inputSchema: { type: "object", properties: { repo: repoArg, branch: { type: "string", description: "Branch name. Leave out for the branch checked out, else main." } } },
     annotations: READ,
   },
   {
     name: "get_plan",
     title: "The branch's plan",
-    description: "Use this when deciding what to do next on a branch, or before changing direction: the branch's goal, where it stands, what's next, the decisions made along the way (with dates, so you don't undo one), and what's done. Kept by muninn from the engineer's sessions.",
+    description: "Use this when deciding what to do next on a branch, or before changing direction: the branch's goal, where it stands, what's next, the decisions made along the way (with dates, so you don't undo one), and what's done. Kept by muninn from the engineer's sessions. As you work from it, call plan_note when you start a step, finish one, make a decision or get stuck, so the plan stays current.",
     inputSchema: { type: "object", properties: { repo: repoArg, branch: { type: "string", description: "Branch name. Leave out for the branch checked out, else main." } } },
     annotations: READ,
   },
@@ -97,9 +97,9 @@ export const TOOLS = [
   {
     name: "plan_note",
     title: "Say what an agent is doing now",
-    description: "Use this while running long work with other agents (sessions you started, subagents, workflows, a builder/reviewer team), so the engineer can read what each one is doing without asking you: when you start one, when one finishes, when one is blocked or needs the engineer, and when what one is doing changes. One plain sentence per agent, saying what it is doing and why, as you'd tell a colleague who just walked in (\"Building the Budget screen; the Overview screen is merged.\"), not a log line. Its newest note replaces its older one, and shows under Working now in the branch's plan (get_plan, muninn ui). Also for yourself, with your own role as who (\"coordinator\").",
+    description: "Use this to keep the branch's plan current as you work, whether you work alone or run other agents (sessions you started, subagents, workflows, a builder/reviewer team). Call it when you start a step, finish one (state done), make a decision the engineer should know about, or get stuck or need the engineer; for other agents, when each starts, finishes, is blocked or changes what it's doing. One plain sentence, saying what is happening and why, as you'd tell a colleague who just walked in (\"Building the Budget screen; the Overview screen is merged.\"), not a log line, and without ids, hashes or tool names. Its newest note replaces its older one and shows under Working now in the branch's plan (get_plan, muninn ui). A done note also makes muninn rewrite the plan's next steps and where it stands from the notes, in the background.",
     inputSchema: { type: "object", properties: {
-      who: { type: "string", description: "The agent: the name you gave the session or subagent when you started it (\"m12-ui-library\", \"reviewer\"), or your own role." },
+      who: { type: "string", description: "The agent: the name you gave the session or subagent when you started it (\"m12-ui-library\", \"reviewer\"), or your own role (\"coordinator\", or \"builder\" when you work alone)." },
       text: { type: "string", description: "One plain sentence, under 200 characters." },
       state: { type: "string", enum: ["working", "blocked", "waiting", "done"], description: "waiting: it needs the engineer. blocked: it's stuck on something else. Default working." },
       repo: repoArg, branch: { type: "string", description: "The plan to add it to. Leave out for the branch checked out here, which for a coordinator is the plan the engineer reads." },
@@ -128,7 +128,7 @@ export const MCP_INSTRUCTIONS = [
   "- Unsure how the engineer wants something done: list_lessons.",
   "- About to undo something decided on purpose: get_related.",
   "- They ask for something to be remembered: suggest_lesson (they review it first).",
-  "- Running long work with other agents (sessions you started, subagents, workflows): plan_note when one starts, finishes, is blocked or needs the engineer, one plain sentence each, so the engineer can see what's going on without asking.",
+  "- Working from the plan: plan_note when you start a step, finish one, make a decision or get stuck, one plain sentence each. Running other agents (sessions you started, subagents, workflows): also when each one starts, finishes, is blocked or needs the engineer. The engineer reads these in the plan, and done notes update its next steps.",
 ].join("\n");
 type Args = Record<string, unknown>;
 /** The installed package's version, for the server's own info. */
@@ -233,7 +233,8 @@ export async function callTool(db: Client, name: string, a: Args, embed: () => P
     const branch = typeof a.branch === "string" && a.branch ? a.branch : (currentBranch(process.cwd()) && repoIdentity(process.cwd()) === repo ? currentBranch(process.cwd())! : "main");
     await setNote(db, { repo_id: repo, branch, who, state, text });
     found.push({ kind: "plan", id: `${repo}#${branch}` });
-    return `Noted under Working now in the ${branch} plan: ${who}${state === "working" ? "" : ` (${state})`}: ${text.slice(0, 240)}`;
+    if (state === "done") { const { startNotesFold } = await import("../commands/auto.js"); startNotesFold(repo, branch); }
+    return `Noted under Working now in the ${branch} plan: ${who}${state === "working" ? "" : ` (${state})`}: ${text.slice(0, 240)}${state === "done" ? "\nmuninn is folding it into the plan's next steps and where it stands now." : ""}`;
   }
   if (name === "get_related") {
     const e = await embed();

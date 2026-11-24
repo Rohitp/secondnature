@@ -43,7 +43,7 @@ export async function addItem(db: Client, repo: string, branch: string, kind: Ki
   // One goal at a time: a new goal replaces the old one.
   if (kind === "goal") await db.execute({ sql: "UPDATE plan_items SET status='closed', closed_at=?, closed_by=? WHERE repo_id=? AND branch=? AND kind='goal' AND status='active'", args: [now(), from.person ? "person" : "session", repo, branch] });
   const id = randomUUID();
-  await db.execute({ sql: "INSERT INTO plan_items (id,repo_id,branch,kind,text,handoff_id,session,created_at,by_person) VALUES (?,?,?,?,?,?,?,?,?)", args: [id, repo, branch, kind, t, from.handoff?.id ?? null, from.handoff?.session ?? null, from.handoff?.created_at ?? now(), from.person ? 1 : 0] });
+  await db.execute({ sql: "INSERT INTO plan_items (id,repo_id,branch,kind,text,handoff_id,session,created_at,by_person) VALUES (?,?,?,?,?,?,?,?,?)", args: [id, repo, branch, kind, t, from.handoff?.id ?? null, from.handoff?.session || null, from.handoff?.created_at ?? now(), from.person ? 1 : 0] });
   return id;
 }
 export async function setStatus(db: Client, id: string, status: "active" | "closed" | "removed", by: "person" | "session") {
@@ -109,7 +109,7 @@ export const DONE_SHOWN = { days: 7, max: 10 };
  * Working now section, as lines; left out of PLAN.md because it's out of date as soon as it's committed. */
 export function planMarkdown(plan: Plan, repoShort: string, branch = "", working: string[] | null = null, at = Date.now()): string {
   const date = (iso: string) => iso.slice(0, 10);
-  const out = [`# Plan: ${repoShort}${branch ? `, branch ${branch}` : ""}`, "", "_Kept by muninn from your coding sessions, and edited by you in muninn ui. Changes made here are overwritten; edit in muninn ui instead._", ""];
+  const out = [`# Plan: ${repoShort}${branch ? `, branch ${branch}` : ""}`, "", "_Kept by muninn from the coding sessions on this branch, and edited by the engineer in muninn ui. To update it as you work, call plan_note when you start a step, finish one, make a decision or get stuck: muninn folds finished steps into the plan. Edits to this text itself are not kept._", ""];
   out.push("## Goal", "", plan.goal ? plan.goal.text : "_Not set yet._", "");
   out.push("## Where it stands", "", plan.status ? plan.status.text : "_Not written yet._", "");
   if (working) out.push("## Working now", "", ...(working.length ? working : ["_Nothing running in this repo right now._"]), "");
@@ -281,6 +281,25 @@ async function rewriteNow(db: Client, repo: string, branch: string, runner: Runn
     if (kept.some((t) => sameItem(t, d.text))) { await setStatus(db, d.id, "removed", "session"); repeats++; } else kept.push(d.text);
   }
   return { before: { next: plan.open.length, decisions: plan.decisions.length }, after: { next: Math.min(ops.next.length, 3), decisions: Math.min(ops.decisions.length, 8) }, closed: finished.size, done: added, repeats };
+}
+
+const foldedKey = (repo: string, branch: string) => `plan_notes_folded:${repo}@${branch}`;
+/**
+ * Folds the notes agents left with plan_note into the branch's plan, once one of them says a step is done. Without
+ * this the plan only changes when a session checkpoints or ends, which Antigravity and Cursor never tell muninn about.
+ * The plan is still rewritten whole, from the notes as the newest session note.
+ */
+export async function applyNotes(db: Client, repo: string, branch: string, runner: Runner): Promise<boolean> {
+  return withPlanLock(repo, branch, async () => {
+    const since = String((await db.execute({ sql: "SELECT value FROM meta WHERE key=?", args: [foldedKey(repo, branch)] })).rows[0]?.value ?? "") || new Date(Date.now() - 24 * 3_600_000).toISOString();
+    const rows = (await db.execute({ sql: "SELECT who,state,text,at FROM plan_notes WHERE repo_id=? AND branch=? AND at>? ORDER BY at", args: [repo, branch, since] })).rows as unknown as { who: string; state: string; text: string; at: string }[];
+    if (!rows.some((r) => r.state === "done")) return false;
+    const last = rows[rows.length - 1]!.at;
+    const text = ["Notes the agents working on this branch left while they worked:", ...rows.map((r) => `- ${r.who}${r.state === "working" ? "" : ` (${r.state})`}: ${r.text}`)].join("\n");
+    await rewriteNow(db, repo, branch, runner, { id: `notes:${repo}@${branch}@${last}`, repo_id: repo, branch, session: "", tool: "agent notes", text, created_at: last });
+    await db.execute({ sql: "INSERT OR REPLACE INTO meta (key,value) VALUES (?,?)", args: [foldedKey(repo, branch), last] });
+    return true;
+  });
 }
 
 /** Rewrites a branch's plan from what it already holds and the latest git facts. Used by "muninn plan tidy". */

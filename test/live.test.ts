@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { callTool } from "../src/mcp/server.js";
 import { slugOf, workingNow, workingLines } from "../src/plan/live.js";
-import { addItem, getPlan, planMarkdown } from "../src/plan/plan.js";
+import { addItem, applyNotes, getPlan, planMarkdown } from "../src/plan/plan.js";
 import { repoIdentity } from "../src/repo/identity.js";
 import { openDb } from "../src/store/db.js";
 import { ensureRepo } from "../src/store/lessons.js";
@@ -86,6 +86,34 @@ describe("working now", () => {
     expect(runs).toMatch(/^RUNNING NOW/);
     // PLAN.md, written into the repo, leaves Working now out: it's stale as soon as it's committed.
     expect(planMarkdown(await getPlan(db, repo, "main"), "wb", "main")).not.toMatch(/Working now/);
+  });
+
+  it("folds agents' notes into the plan once one says a step is done, and only once", async () => {
+    const db = await openDb();
+    const open = await addItem(db, repo, "main", "open", "Build the Budget screen");
+    let prompt = "", calls = 0;
+    const runner = { name: "fake", run: (p: string) => { prompt = p; calls++; return JSON.stringify({ goal: "Ship the money screens", status: "The Budget screen is built; Overview is next.", next: [{ text: "Build the Overview screen" }], decisions: [], finished: [open!.slice(0, 8)], done: ["Built the Budget screen"] }); } };
+    await callTool(db, "plan_note", { repo, branch: "main", who: "builder", text: "Building the Budget screen from the design." }, async () => null);
+    // Only working notes: nothing to fold yet, and no AI call.
+    expect(await applyNotes(db, repo, "main", runner)).toBe(false);
+    const out = await callTool(db, "plan_note", { repo, branch: "main", who: "builder", text: "Finished the Budget screen; starting Overview next.", state: "done" }, async () => null);
+    expect(out).toMatch(/folding it into the plan/);
+    expect(await applyNotes(db, repo, "main", runner)).toBe(true);
+    expect(prompt).toMatch(/builder \(done\): Finished the Budget screen/);
+    const plan = await getPlan(db, repo, "main");
+    expect(plan.open.map((o) => o.text)).toEqual(["Build the Overview screen"]);
+    expect(plan.status?.text).toMatch(/Overview is next/);
+    expect(plan.done.map((d) => d.text)).toContain("Build the Budget screen");
+    // The same notes aren't folded in twice.
+    expect(await applyNotes(db, repo, "main", runner)).toBe(false);
+    expect(calls).toBe(1);
+  });
+
+  it("tells agents in get_plan to keep the plan current with plan_note", async () => {
+    await addItem(await openDb(), repo, "main", "goal", "Ship it");
+    const plan = await callTool(await openDb(), "get_plan", { repo, branch: "main" }, async () => null);
+    expect(plan).toMatch(/call plan_note when you start a step/);
+    expect(plan).not.toMatch(/Changes made here are overwritten/);
   });
 
   it("refuses a note without a sentence", async () => {
