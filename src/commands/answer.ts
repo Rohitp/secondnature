@@ -7,7 +7,7 @@ import { askData } from "./ask.js";
 import { recallData } from "./recall.js";
 
 /** One thing an answer can draw on: a kept lesson or note, a plan decision or finished step, a past exchange, a handoff. */
-export type Source = { n: number; id: string; kind: "lesson" | "note" | "decision" | "done" | "goal" | "session" | "handoff"; text: string; where: string; date: string | null; session?: string | null; repo?: string | null; branch?: string | null; tool?: string | null };
+export type Source = { n: number; id: string; kind: "lesson" | "note" | "decision" | "done" | "goal" | "session" | "handoff"; text: string; where: string; date: string | null; session?: string | null; repo?: string | null; branch?: string | null; tool?: string | null; related?: string[] };
 /** What an answer is doing, for a page that shows progress: searching, what it found, then writing. */
 export type Stage = { stage: "search" } | { stage: "found"; kept: number; plan: number; sessions: number } | { stage: "write" };
 export type Answer = { answer: string | null; sources: Source[] };
@@ -56,13 +56,13 @@ export async function gatherSources(db: Client, q: string, repo: string | null, 
         const because = list(await sel("SELECT coalesce(p.what,p.text) t FROM live_links l JOIN plan_items p ON p.id=l.src_id WHERE l.rel='motivates' AND l.dst_id=?", [String(o.id)]), "t");
         const outside = list(await sel("SELECT dst_id FROM live_links WHERE src_id=? AND rel='affects'", [String(o.id)]), "dst_id");
         if (because.length) notes.push(`Because of: ${because.join("; ")}`);
-        if (outside.length) notes.push(`Changed outside the repo: ${outside.join(", ")}`);
+        if (outside.length) notes.push(`Also changed outside this repo: ${outside.join(", ")}`);
       }
     } else if (s.kind === "lesson" || s.kind === "note") {
       const missing = list(await sel("SELECT dst_id FROM links WHERE src_id=? AND rel='applies_to' AND how='missing'", [s.id]), "dst_id");
       if (missing.length) notes.push(`Names ${missing.join(", ")}, no longer in the repo`);
     }
-    if (notes.length) s.text += ` (${notes.join(". ")})`;
+    if (notes.length) s.related = notes;
   }
   return out.map((s, i) => ({ n: i + 1, ...s }));
 }
@@ -102,7 +102,7 @@ export async function answerData(db: Client, q: string, repo: string | null, run
   onStage?.({ stage: "found", kept: count("lesson", "note"), plan: count("decision", "done", "goal", "handoff"), sessions: count("session") });
   if (!sources.length) return { answer: null, sources: [] };
   onStage?.({ stage: "write" });
-  const prompt = buildAnswerPrompt(q, sources.map(({ n, kind, text, date, where }) => ({ n, kind, text: text.slice(0, 1800), date, where })), history);
+  const prompt = buildAnswerPrompt(q, sources.map(({ n, kind, text, date, where, related }) => ({ n, kind, text: (related?.length ? `${text} (${related.join(". ")})` : text).slice(0, 1800), date, where })), history);
   const reply = runner.runAsync ? await runner.runAsync(prompt) : runner.run(prompt);
   return { answer: reply.trim(), sources };
 }

@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { callTool } from "../src/mcp/server.js";
+import { askedWords, callTool } from "../src/mcp/server.js";
 import { slugOf, workingNow, workingLines } from "../src/plan/live.js";
 import { addItem, applyNotes, getPlan, planMarkdown } from "../src/plan/plan.js";
 import { repoIdentity } from "../src/repo/identity.js";
@@ -114,6 +114,24 @@ describe("working now", () => {
     const plan = await callTool(await openDb(), "get_plan", { repo, branch: "main" }, async () => null);
     expect(plan).toMatch(/call plan_note when you start a step/);
     expect(plan).not.toMatch(/Changes made here are overwritten/);
+  });
+
+  it("shows finished work in get_plan as grouped outcomes, with steps not grouped yet as they are", async () => {
+    const db = await openDb();
+    const a = await addItem(db, repo, "main", "done", "Added the Working now card");
+    await addItem(db, repo, "main", "done", "Merged PR #83; its content is not logged");
+    const plan = await getPlan(db, repo, "main");
+    const md = planMarkdown(plan, "wb", "main", null, Date.now(), [{ title: "Shipped Working now", result: "The Plan page shows what each agent is doing.", ref: "PR #82", at: new Date().toISOString(), stepIds: [a!] }]);
+    expect(md).toMatch(/- \[x\] Shipped Working now \(PR #82\): The Plan page shows what each agent is doing\./);
+    expect(md).not.toMatch(/Added the Working now card/);
+    expect(md).toMatch(/Merged PR #83/);
+  });
+
+  it("logs what agents asked in plain words, not ids", () => {
+    expect(askedWords("open_results", { ids: ["1", "2"] })).toBe("Opened 2 search matches in full");
+    expect(askedWords("review_lesson", { id: "a4f91c02", action: "keep", engineer_said: "keep that one" })).toBe('Keep a suggested lesson, because the engineer said "keep that one"');
+    expect(askedWords("get_plan", {})).toBe("");
+    expect(askedWords("search_history", { query: "why libsql" })).toBe("why libsql");
   });
 
   it("refuses a note without a sentence", async () => {

@@ -245,6 +245,7 @@ pre code { background: none; padding: 0; }
 .srcb { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .srch { font-size: 13px; color: var(--muted); } .srch b { color: var(--ink); font-weight: 600; }
 .srct { font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; white-space: pre-line; }
+.srcrel { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: var(--muted); }
 .srcl { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; }
 .srcl a { text-decoration: none; } .srcl a:hover { text-decoration: underline; } .srcl .linkbtn { font-size: 13px; }
 .askform { display: flex; gap: 8px; padding: 12px 18px 6px; border-top: 1px solid var(--line); }
@@ -651,7 +652,7 @@ function histList() {
       <span><span class="htitle">${esc(o.title)}</span><div class="hres">${esc(o.result)}</div>
         <span class="hmeta"><span class="hkind ${o.kind}">${KIND_LABEL[o.kind] || o.kind}</span>${o.area ? `<span>${esc(o.area)}</span><span aria-hidden="true">·</span>` : ""}<span>${o.steps.length} step${o.steps.length === 1 ? "" : "s"}${hidden ? `, ${hidden} routine hidden` : ""}</span></span></span>
       <span class="href">${esc(o.ref || "")}</span></button>
-      ${isOpen && (o.links?.because?.length || o.links?.sessions || o.links?.files?.length) ? `<div class="hres" style="margin:0 0 8px 28px">${[o.links.because?.length ? `Because of: ${o.links.because.map((d) => `${esc(d.title)} <button class="linkbtn" data-unlink="${esc(d.id)}|${esc(o.id)}" aria-label="Remove: this work wasn't because of ${esc(d.title)}" title="Not related">×</button>`).join(" · ")}` : "", o.links.outside?.length ? `Changed outside the repo: ${o.links.outside.map(esc).join(", ")}` : "", o.links.sessions ? `Built in ${o.links.sessions} session${o.links.sessions === 1 ? "" : "s"}` : "", o.links.files?.length ? `Files: ${o.links.files.map((f) => `<code>${esc(f)}</code>`).join(", ")}` : ""].filter(Boolean).join(". ")}</div>` : ""}
+      ${isOpen && (o.links?.because?.length || o.links?.sessions || o.links?.files?.length) ? `<div class="hres" style="margin:0 0 8px 28px">${[o.links.because?.length ? `Because of: ${o.links.because.map((d) => `${esc(d.title)} <button class="linkbtn" data-unlink="${esc(d.id)}|${esc(o.id)}" aria-label="Remove: this work wasn't because of ${esc(d.title)}" title="Not related">×</button>`).join(" · ")}` : "", o.links.outside?.length ? `Also changed outside this repo: ${o.links.outside.map((f) => `<code>${esc(f)}</code>`).join(", ")}` : "", o.links.sessions ? `Built in ${o.links.sessions} session${o.links.sessions === 1 ? "" : "s"}` : "", o.links.files?.length ? `Files: ${o.links.files.map((f) => `<code>${esc(f)}</code>`).join(", ")}` : ""].filter(Boolean).join(". ")}</div>` : ""}
       ${isOpen ? `<ul class="hsteps">${steps.map(stepRow).join("")}</ul>` : ""}</div>`;
   }).join("")}`).join("") + (shown.length < outcomes.length ? `<button class="more" data-hist-more>Show ${Math.min(8, outcomes.length - shown.length)} earlier outcomes of ${outcomes.length - shown.length}</button>` : "");
 }
@@ -771,6 +772,7 @@ function sourceCard(s, ti) {
   return `<li class="src" id="src-${ti}-${s.n}"><span class="srcn">${s.n}</span><div class="srcb">
     <div class="srch"><b>${esc((SRC_LABEL[s.kind] || (() => s.kind))(s))}</b>${s.where ? ` · ${esc(s.where)}` : ""}${s.date ? ` · ${esc(shortDate(s.date))}` : ""}</div>
     <div class="srct">${esc(sourceText(s))}</div>
+    ${s.related?.length ? `<ul class="srcrel">${s.related.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}
     ${s.links?.length ? `<div class="srcl">${s.links.map((l) => l.url ? `<a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer"${l.mono ? ' class="mono"' : ""}>${esc(l.label)} ↗</a>` : `<button class="linkbtn" data-reveal="${esc(l.log)}">${esc(l.label)}</button>`).join("")}</div>` : ""}
   </div></li>`;
 }
@@ -841,7 +843,7 @@ async function askNow(qtext) {
 let week = null, weekLoading = false;
 function weekSection() {
   return `<section aria-labelledby="wk"><h2 id="wk">Your week</h2>
-    ${week ? `<ul class="group"><li><pre style="white-space:pre-wrap;font:13px/1.55 ui-monospace,Menlo,monospace;margin:0;padding:14px">${esc(week)}</pre></li></ul>`
+    ${week ? `<ul class="group"><li style="padding:14px;font-size:14px">${weekHtml(week)}</li></ul>`
       : `<p class="note">${weekLoading ? `<span class="spin" aria-hidden="true"></span> Reading the last 7 days of sessions…` : `<button class="linkbtn" data-week>Show your last 7 days</button>: where agents wasted effort, whether lessons helped, and what's waiting. Also <code>muninn insights</code>.`}</p>`}
   </section>`;
 }
@@ -852,7 +854,7 @@ function workingCard() {
   const rows = data.plan.working || [];
   const row = (r) => { const st = W_STATE[r.state]; return `<li><div class="row" style="${r.kind === "subagent" ? "padding-left:22px" : ""}"><div class="main" style="cursor:default"><div class="title" style="font-weight:500">${esc(r.name)}${r.kind === "subagent" ? ` <span class="sub">subagent of ${esc(r.parent || "")}</span>` : ""}${st ? ` <span class="status ${st[1]}">${st[0]}</span>` : ""}</div>
     <div style="color:var(--body)">${r.doing ? esc(r.doing) : '<span class="sub">No note yet</span>'}</div>
-    <div class="sub">${r.branch && r.branch !== data.plan.branch ? `on <span class="mono">${esc(r.branch)}</span> · ` : ""}${esc(ago(r.at))}${r.from === "log" ? " · from its log" : " · its own note"}</div></div></div></li>`; };
+    <div class="sub">${r.branch && r.branch !== data.plan.branch ? (/^(claude|worktree)\//.test(r.branch) ? "in its own copy of the repo · " : `on <span class="mono">${esc(r.branch)}</span> · `) : ""}${esc(ago(r.at))}${r.from === "log" ? " · muninn's guess from its last message" : " · in its own words"}</div></div></div></li>`; };
   return `<section class="card" aria-labelledby="wnh"><div class="cardhead"><h2 id="wnh">Working now${rows.length ? ` · ${rows.filter((r) => r.kind !== "subagent").length}` : ""}</h2><span class="sub">Agents running for this branch, and the sessions it started</span></div>
     ${rows.length ? `<ul class="group flat">${rows.map(row).join("")}</ul>` : `<p style="padding:0 18px 14px">Nothing running right now. When agents work here, each shows with a line on what it's doing.</p>`}</section>`;
 }
@@ -1822,7 +1824,7 @@ function activityView() {
       ${askedSection()}
       ${toldSection()}
       <section aria-labelledby="wk"><h2 id="wk">Your last 7 days</h2>
-        ${week ? `<div class="panel"><pre style="white-space:pre-wrap;font:12px/1.6 var(--mono);margin:0;padding:14px 16px">${esc(week)}</pre></div>`
+        ${week ? `<div class="panel panelbody" style="font-size:14px">${weekHtml(week)}</div>`
           : `<div class="panel panelbody">${weekLoading ? `<span class="spin" aria-hidden="true" style="display:inline-block;vertical-align:-2px"></span> Reading the last 7 days of sessions…` : `<button class="btn" data-week>Show your last 7 days</button><p class="note" style="margin:10px 0 0">Where agents wasted effort, whether lessons helped, and what's waiting. Also <code>muninn insights</code>.</p>`}</div>`}
       </section>
     </div>
@@ -1832,19 +1834,35 @@ function activityView() {
 }
 /* What secondnature told agents this week through its hooks: each session, what it got, and when nothing was sent, why. */
 const OUTCOME = { sent: ["told", "good"], no_match: ["checked, nothing fit", ""], limit: ["not sent: no room left", "caution"], paused: ["paused or set to quiet", "caution"], timeout: ["too slow, skipped", "warn"], unsupported_client: ["tool can't take it", "warn"] };
+/* "Your last 7 days" as sections: muninn insights writes a heading line, then indented lines under it. */
+function weekHtml(text) {
+  const blocks = String(text).split(/\n\s*\n/);
+  return blocks.map((b, i) => {
+    const lines = b.split("\n").filter((l) => l.trim());
+    if (!lines.length) return "";
+    const head = lines[0], rest = lines.slice(1);
+    const items = rest.filter((l) => /^\s/.test(l)).map((l) => `<li>${esc(l.trim())}</li>`).join("");
+    if (i === 0) return `<p style="margin:0 0 6px;color:var(--muted)">${esc(head)}</p>${rest.map((l) => `<p style="margin:0 0 6px">${esc(l.trim())}</p>`).join("")}`;
+    return items ? `<h3 style="margin:14px 0 4px;font-size:14px">${esc(head)}</h3><ul style="margin:0;padding-left:18px">${items}</ul>` : `<p style="margin:12px 0 0">${esc(head)}</p>`;
+  }).join("");
+}
 function toldSection() {
   const t = data.told;
   if (!t) return "";
   const total = Object.values(t.outcomes).reduce((a, b) => a + b, 0);
   const strip = Object.entries(t.outcomes).sort((a, b) => b[1] - a[1]).map(([o, n]) => { const [word, cls] = OUTCOME[o] || [o, ""]; return `<span><b>${n}</b> <span class="status ${cls}">${esc(word)}</span></span>`; }).join("");
-  const item = (x) => `<div style="margin:2px 0"><span class="tag">${{ handoff: "where you left off", plan: "plan", note: "reminder" }[x.kind] || "lesson"}</span> ${esc(clip(x.text, 110))} <span style="color:var(--muted)">· ${esc(x.why)}</span></div>`;
+  // Handoffs and plans are several labelled lines ("Goal: … Done: …"): the first shows, the rest open on a click.
+  const item = (x) => { const tag = `<span class="tag">${{ handoff: "where you left off", plan: "plan", note: "reminder" }[x.kind] || "lesson"}</span>`;
+    const lines = String(x.text).split("\n").map((l) => l.trim()).filter(Boolean);
+    if ((x.kind === "handoff" || x.kind === "plan") && lines.length > 1) return `<details style="margin:2px 0"><summary style="cursor:pointer">${tag} ${esc(clip(lines[0], 110))} <span style="color:var(--muted)">· ${esc(x.why)}</span></summary><div style="margin:4px 0 6px 12px;font-size:13px">${lines.slice(1).map((l) => `<div>${esc(l)}</div>`).join("")}</div></details>`;
+    return `<div style="margin:2px 0">${tag} ${esc(clip(x.text, 110))} <span style="color:var(--muted)">· ${esc(x.why)}</span></div>`; };
   const rows = t.sessions.slice(0, 10).map((s) => {
     const nothing = Object.entries(s.outcomes).filter(([o]) => o !== "sent").map(([o, n]) => `${n} ${(OUTCOME[o] || [o])[0]}`).join(" · ");
     const got = s.told.map(item).join("")
       + (s.fromFile ? `<div style="margin:2px 0;color:var(--muted)">${s.fromFile} lesson${s.fromFile === 1 ? "" : "s"} already in CLAUDE.local.md, which it read itself</div>` : "")
       + s.loops.map((l) => `<div style="margin:2px 0"><span class="status warn">loop warning</span> <code>${esc(clip(l.cmd, 60))}</code> failed ${l.n} times</div>`).join("")
       + (s.held.length ? `<div style="margin:2px 0"><span class="status caution">not sent, no room</span> ${s.held.map((h) => esc(clip(h.text, 60))).join(" · ")}</div>` : "");
-    return `<tr><td style="white-space:nowrap;color:var(--muted)">${esc(shortDate(s.start))}, ${esc(clock(s.start))}</td><td>${esc(TOOL_NAMES[s.tool] || s.tool)}<div style="font:500 12px/17px var(--mono);color:var(--muted)">${esc(s.session.slice(0, 8))}</div></td><td>${got || '<span style="color:var(--muted)">Nothing told</span>'}${nothing ? `<div class="note" style="margin:4px 0 0">${esc(nothing)}</div>` : ""}</td></tr>`;
+    return `<tr><td style="white-space:nowrap;color:var(--muted)">${esc(shortDate(s.start))}, ${esc(clock(s.start))}</td><td>${esc(TOOL_NAMES[s.tool] || s.tool)}</td><td>${got || '<span style="color:var(--muted)">Nothing told</span>'}${nothing ? `<div class="note" style="margin:4px 0 0">${esc(nothing)}</div>` : ""}</td></tr>`;
   }).join("");
   const how = (l) => l.how === "always" ? (l.role ? `goes only to agents in the ${l.role} role, and none got it (see Lessons for why)` : "goes to every session, yet none got it")
     : l.how === "keyword" ? `waits for ${l.keywords.slice(0, 4).map((k) => `"${k}"`).join(", ")}, which never came up` : "only if an agent looks it up, and none did";
@@ -1871,7 +1889,12 @@ const SURFACE_SAYS = {
   search_history: "searched lessons, plans and past sessions", open_results: "opened search matches in full", get_plan: "read a branch's plan", get_week: "read the recent week", get_related: "looked up what a decision led to",
   list_repos: "listed the repos", suggest_lesson: "suggested a lesson", get_runs: "read runs where agents worked together", list_lessons: "listed the lessons",
   where_left_off: "read where the last session left off", review_lesson: "kept or dismissed a lesson", ask: "ran muninn ask", recall: "ran muninn recall", related: "ran muninn related",
+  plan_note: "said what an agent is doing",
 };
+// A way of asking, in plain words, for the table and its tags: never the tool's code name.
+const surfaceWords = (s) => SURFACE_SAYS[s] || `used ${String(s).replace(/_/g, " ")}`;
+// Before 24 Nov a lookup logged its argument, often a bare id ("4d91324a keep", "1, 2"): not something to show a person.
+const askedText = (x) => (/^(review_lesson|open_results)$/.test(x.surface) && /^[0-9a-f]{8,}( \w+)?$|^[\d, ]+$|^[\w:-]{16,}$/i.test(x.query || "") ? "" : x.query);
 const FOUND_KIND = { lesson: "Lesson", note: "Note", session: "Past session", plan: "Plan", run: "Run", handoff: "Where a session left off", link: "Links", repo: "Repo" };
 /* Search answers come as "[n] KIND · repo · branch · date[ · id x]\ntext" blocks. Split them so each match reads as its own card. */
 const MATCH_KIND = { LESSON: "Lesson", NOTE: "Note", DECISION: "Decision", DONE: "Finished work", GOAL: "Branch goal", SESSION: "Past session", HANDOFF: "Where a session left off" };
@@ -1953,11 +1976,11 @@ function askedDetail(x) {
     const text = (r.kind === "lesson" || r.kind === "note") && (data.lessonText?.[r.id] || lessons.find((k) => k.id === r.id)?.text);
     return `<li>${esc(FOUND_KIND[r.kind] || r.kind)}: ${text ? esc(clip(text, 200)) : `<span class="mono">${esc(clip(r.id, 80))}</span>`}</li>`;
   }).join("");
-  const facts = [`${esc(TOOL_NAMES[x.tool] || x.tool)} ${esc(SURFACE_SAYS[x.surface] || `used ${x.surface}`)}`, x.repo ? `in ${esc(short(x.repo))}` : null, x.branch ? `on ${esc(x.branch)}` : null, `took ${x.ms < 1000 ? `${x.ms} ms` : `${(x.ms / 1000).toFixed(1)} s`}`, x.session ? `session <span class="mono">${esc(x.session.slice(0, 8))}</span>` : null].filter(Boolean).join(" · ");
+  const facts = [`${esc(TOOL_NAMES[x.tool] || x.tool)} ${esc(surfaceWords(x.surface))}`, x.repo ? `in ${esc(short(x.repo))}` : null, x.branch ? `on ${esc(x.branch)}` : null, `took ${x.ms < 1000 ? `${x.ms} ms` : `${(x.ms / 1000).toFixed(1)} s`}`].filter(Boolean).join(" · ");
   return `<tr class="askdetail"><td colspan="4" style="background:var(--fill)">
     <div style="font-size:13px;color:var(--muted);margin-bottom:8px">${facts}</div>
     <div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">${x.surface === "search_history" ? "Words the agent searched for" : "Asked"}</div>
-    <div style="margin:2px 0 12px">${x.query ? esc(x.query) : '<span style="color:var(--muted)">No question: a lookup with no words, such as listing the repos.</span>'}</div>
+    <div style="margin:2px 0 12px">${askedText(x) ? esc(askedText(x)) : '<span style="color:var(--muted)">No question: a lookup with no words, such as listing the repos.</span>'}</div>
     <div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">${x.answer != null ? "What it got back" : "What it found"}</div>
     ${x.answer != null ? answerView(x)
       : found ? `<ul style="margin:4px 0 0;padding-left:18px">${found}</ul><p class="note" style="margin-top:8px">Asked before secondnature kept the text of each answer, so only what it found is shown.</p>`
@@ -1966,14 +1989,14 @@ function askedDetail(x) {
 }
 function askedSection() {
   const qs = data.queries;
-  if (!qs.length) return `<section><h2>What agents asked · 0</h2><ul class="group"><li class="empty">No agent has asked secondnature anything this week. Agents can ask through its MCP tools (search_history, get_plan, where_left_off…) or by running muninn ask; each question shows here with what it found.</li></ul></section>`;
+  if (!qs.length) return `<section><h2>What agents asked · 0</h2><ul class="group"><li class="empty">No agent has asked secondnature anything this week. Agents ask by searching past sessions, reading the branch plan or where the last session left off, or by running muninn ask; each question shows here with what it found.</li></ul></section>`;
   const found = qs.filter((x) => x.results > 0).length;
   const count = (key) => Object.entries(qs.reduce((m, x) => ((m[key(x)] = (m[key(x)] || 0) + 1), m), {})).sort((a, b) => b[1] - a[1]);
   const byTool = count((x) => TOOL_NAMES[x.tool] || x.tool).map(([k, n]) => `${esc(k)} ${n}`).join(" · ");
-  const bySurface = count((x) => x.surface).slice(0, 4).map(([k, n]) => `<span class="tag">${esc(k)}</span> ${n}`).join(" ");
+  const bySurface = count((x) => surfaceWords(x.surface)).slice(0, 4).map(([k, n]) => `<span class="tag">${esc(k)}</span> ${n}`).join(" ");
   // Asked more than once, in about the same words.
   const again = count((x) => x.query.toLowerCase().replace(/\s+/g, " ").trim()).filter(([k, n]) => n > 1 && k).slice(0, 3);
-  const rows = qs.slice(0, 12).map((x) => { const isOpen = openQuery === x.id; return `<tr><td style="white-space:nowrap;color:var(--muted)">${esc(shortDate(x.ts))}, ${esc(clock(x.ts))}</td><td>${esc(TOOL_NAMES[x.tool] || x.tool)}<div style="font:500 12px/17px var(--mono);color:var(--muted)">${esc(x.surface)}</div></td><td><button class="linkbtn" style="text-align:left;font-size:13px;font-weight:400" data-query="${esc(x.id)}" aria-expanded="${isOpen}">${x.query ? esc(clip(x.query, 140)) : "(no question: a lookup)"}</button><div style="font-size:12px;color:var(--muted)">${isOpen ? "Hide" : "Show what it got back"}</div></td><td>${x.results ? `<span class="status good">${x.results} match${x.results === 1 ? "" : "es"}</span>` : '<span class="status warn">no matches</span>'}</td></tr>${isOpen ? askedDetail(x) : ""}`; }).join("");
+  const rows = qs.slice(0, 12).map((x) => { const isOpen = openQuery === x.id; return `<tr><td style="white-space:nowrap;color:var(--muted)">${esc(shortDate(x.ts))}, ${esc(clock(x.ts))}</td><td>${esc(TOOL_NAMES[x.tool] || x.tool)}<div style="font-size:12px;color:var(--muted)">${esc(surfaceWords(x.surface))}</div></td><td><button class="linkbtn" style="text-align:left;font-size:13px;font-weight:400" data-query="${esc(x.id)}" aria-expanded="${isOpen}">${askedText(x) ? esc(clip(askedText(x), 140)) : "(no question: a lookup)"}</button><div style="font-size:12px;color:var(--muted)">${isOpen ? "Hide" : "Show what it got back"}</div></td><td>${x.results ? `<span class="status good">${x.results} match${x.results === 1 ? "" : "es"}</span>` : '<span class="status warn">no matches</span>'}</td></tr>${isOpen ? askedDetail(x) : ""}`; }).join("");
   return `<section><h2>What agents asked · ${qs.length}</h2><div class="panel">
     <div class="panelbody" style="display:flex;gap:6px 18px;flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--line)">
       <span><b>${found} of ${qs.length}</b> lookup${qs.length === 1 ? "" : "s"} found something</span><span style="color:var(--muted)">${byTool}</span><span>${bySurface}</span></div>

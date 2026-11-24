@@ -100,6 +100,8 @@ export async function insightsData(db: Client, repo: string | null, days = 7, se
 }
 
 const k = (n: number) => (n >= 10_000 ? `${Math.round(n / 1000)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+/** Each way of asking, in plain words. */
+const ASKED_HOW: Record<string, string> = { search_history: "searched past sessions", open_results: "opened search matches", get_plan: "read the branch plan", where_left_off: "read where the last session left off", get_week: "read the recent week", get_related: "looked up what a decision led to", list_lessons: "listed lessons", list_repos: "listed repos", suggest_lesson: "suggested a lesson", get_runs: "read how agent teams did", plan_note: "said what they were doing", review_lesson: "reviewed a lesson", ask: "ran muninn ask", recall: "ran muninn recall", related: "ran muninn related" };
 export function insightsText(i: Insights): string {
   const out: string[] = [];
   const where = i.repo ? i.repo.split("/").pop() : "all repos";
@@ -126,7 +128,7 @@ export function insightsText(i: Insights): string {
   for (const c of i.lessons.cameBack) out.push(`  Came back: "${c.text.slice(0, 90)}${c.text.length > 90 ? "…" : ""}". ${c.verdict}`);
   if (i.asked.count) {
     out.push("", "What agents asked");
-    out.push(`  ${i.asked.count} question(s), ${i.asked.found} found something (${Math.round((i.asked.found / i.asked.count) * 100)}%). Most used: ${i.asked.bySurface.slice(0, 3).map((x) => `${x.surface} ${x.count}`).join(", ")}.`);
+    out.push(`  ${i.asked.count} question(s), ${i.asked.found} found something (${Math.round((i.asked.found / i.asked.count) * 100)}%). Most often they ${i.asked.bySurface.slice(0, 3).map((x) => `${ASKED_HOW[x.surface] ?? x.surface.replace(/_/g, " ")} (${x.count})`).join(", ")}.`);
     for (const q of i.asked.nothing) out.push(`  Found nothing: "${q.length > 90 ? q.slice(0, 89) + "…" : q}"`);
   }
   if (i.runs.count) {

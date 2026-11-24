@@ -56,7 +56,7 @@ describe("what agents asked, in your week", () => {
     await recordQuery(db, ask({ tool: "terminal", query: "typed by a person", results: 0 }));
     const text = insightsText(await insightsData(db, repo, 7, [], []));
     expect(text).toContain("What agents asked");
-    expect(text).toContain("3 question(s), 2 found something (67%). Most used: search_history 2, get_plan 1.");
+    expect(text).toContain("3 question(s), 2 found something (67%). Most often they searched past sessions (2), read the branch plan (1).");
     expect(text).toContain('Found nothing: "what is the bid-ask formula"');
     expect(text).not.toContain("typed by a person");
   });

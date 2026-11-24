@@ -103,11 +103,13 @@ export function planText(plan: Plan, repoShort: string, branch: string, working:
   return lines.join("\n");
 }
 
+/** A finished piece of work, grouped from its steps, as get_plan shows it. */
+export type DoneOutcome = { title: string; result: string; ref: string | null; at: string; stepIds: string[] };
 /** Done items shown in the Markdown plan: the last few days, at most this many. muninn ui shows them all. */
 export const DONE_SHOWN = { days: 7, max: 10 };
 /** The plan as a Markdown file, for people who want it in the repo, and for agents through get_plan. `working` is the
  * Working now section, as lines; left out of PLAN.md because it's out of date as soon as it's committed. */
-export function planMarkdown(plan: Plan, repoShort: string, branch = "", working: string[] | null = null, at = Date.now()): string {
+export function planMarkdown(plan: Plan, repoShort: string, branch = "", working: string[] | null = null, at = Date.now(), outcomes: DoneOutcome[] | null = null): string {
   const date = (iso: string) => iso.slice(0, 10);
   const out = [`# Plan: ${repoShort}${branch ? `, branch ${branch}` : ""}`, "", "_Kept by muninn from the coding sessions on this branch, and edited by the engineer in muninn ui. To update it as you work, call plan_note when you start a step, finish one, make a decision or get stuck: muninn folds finished steps into the plan. Edits to this text itself are not kept._", ""];
   out.push("## Goal", "", plan.goal ? plan.goal.text : "_Not set yet._", "");
@@ -116,6 +118,18 @@ export function planMarkdown(plan: Plan, repoShort: string, branch = "", working
   out.push("## Next", "", ...(plan.open.length ? plan.open.map((o) => `- [ ] ${o.text}`) : ["_Nothing open._"]), "");
   out.push("## Decisions", "", ...(plan.decisions.length ? plan.decisions.map((d) => `- ${date(d.created_at)}: ${d.text}`) : ["_None yet._"]), "");
   const since = new Date(at - DONE_SHOWN.days * 86_400_000).toISOString();
+  // Grouped into outcomes ("Shipped the Plan page (PR #82): …") when muninn has grouped them; the steps not grouped yet as they are.
+  if (outcomes?.length) {
+    const recent = outcomes.filter((o) => o.at >= since).slice(0, DONE_SHOWN.max);
+    const grouped = new Set(outcomes.flatMap((o) => o.stepIds));
+    const loose = plan.done.filter((d) => !grouped.has(d.id) && (d.closed_at ?? d.created_at) >= since).slice(0, Math.max(0, DONE_SHOWN.max - recent.length));
+    const lines = [...recent.map((o) => `- [x] ${o.title}${o.ref ? ` (${o.ref})` : ""}: ${o.result} (${date(o.at)})`), ...loose.map((d) => `- [x] ${d.text}${d.closed_at ? ` (${date(d.closed_at)})` : ""}`)];
+    const older = outcomes.length - recent.length;
+    out.push("## Done", "", ...(lines.length ? lines : [`_Nothing in the last ${DONE_SHOWN.days} days._`]));
+    if (older > 0) out.push("", `_${older} older outcome(s) not shown; muninn ui has them all._`);
+    out.push("");
+    return out.join("\n");
+  }
   const shown = plan.done.filter((d) => (d.closed_at ?? d.created_at) >= since).slice(0, DONE_SHOWN.max);
   const older = plan.done.length - shown.length;
   out.push("## Done", "", ...(shown.length ? shown.map((d) => `- [x] ${d.text}${d.closed_at ? ` (${date(d.closed_at)})` : ""}`) : [plan.done.length ? `_Nothing in the last ${DONE_SHOWN.days} days._` : "_Nothing yet._"]));
