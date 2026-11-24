@@ -14,6 +14,7 @@
   --link: #2f5bea; --link-hover: #1e3a8a; --chip: #eaf0ff; --chip-ink: #1e3a8a; --on: #1b6e3e; --on-bg: #e4f3ea; --on-line: #a9d8bc; --off: #c9d0db;
   --warn: #8a3d06; --warn-bg: #fdebd3; --warn-line: #f6d3a8; --warn-dot: #d97706; --on-warn: #8a3d06; --caution: #7a5200; --caution-bg: #fff4d6;
   --diff-add: #067647; --diff-del: #b42318; --primary-hover: #2a2f3a;
+  --viz-hand: #2a78d6; --viz-ok: #1baf7a; --viz-back: #eb6834; --viz-start: #6250d6; --viz-bar: #7d8796; --viz-lane: #f1f4f8;
   --sans: "Inter", -apple-system, "SF Pro Text", "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
   --display: "Space Grotesk", "Inter", -apple-system, "SF Pro Display", system-ui, sans-serif;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -25,18 +26,21 @@
     --ink: #eceef2; --body: #c5cad3; --muted: #a0a7b2; --faint: #8d94a0;
     --link: #8fa8ff; --link-hover: #b4c5ff; --chip: #1f2a4d; --chip-ink: #b4c5ff; --on: #58c88a; --on-bg: #13281c; --on-line: #2a5a3d; --off: #3b414b;
     --warn: #ffb27a; --warn-bg: #3a2410; --warn-line: #5c3a1c; --warn-dot: #f59e0b; --on-warn: #ffb27a; --caution: #e8b54a; --caution-bg: #2e2410;
-    --diff-add: #6cd49a; --diff-del: #ff8a80; --primary-hover: #d6d9df; color-scheme: dark; }
+    --diff-add: #6cd49a; --diff-del: #ff8a80; --primary-hover: #d6d9df; color-scheme: dark;
+    --viz-hand: #3987e5; --viz-ok: #199e70; --viz-back: #d95926; --viz-start: #9085e9; --viz-bar: #6b7483; --viz-lane: #1f232a; }
 }
 :root[data-theme="dark"] { --bg: #0f1115; --sidebar: #15181d; --group: #1a1d23; --fill: #22262e; --hover: #20242b; --line: #2a2e36; --line-soft: #23272e; --line-strong: #3b414b;
     --ink: #eceef2; --body: #c5cad3; --muted: #a0a7b2; --faint: #8d94a0;
     --link: #8fa8ff; --link-hover: #b4c5ff; --chip: #1f2a4d; --chip-ink: #b4c5ff; --on: #58c88a; --on-bg: #13281c; --on-line: #2a5a3d; --off: #3b414b;
     --warn: #ffb27a; --warn-bg: #3a2410; --warn-line: #5c3a1c; --warn-dot: #f59e0b; --on-warn: #ffb27a; --caution: #e8b54a; --caution-bg: #2e2410;
-    --diff-add: #6cd49a; --diff-del: #ff8a80; --primary-hover: #d6d9df; color-scheme: dark; }
+    --diff-add: #6cd49a; --diff-del: #ff8a80; --primary-hover: #d6d9df; color-scheme: dark;
+    --viz-hand: #3987e5; --viz-ok: #199e70; --viz-back: #d95926; --viz-start: #9085e9; --viz-bar: #6b7483; --viz-lane: #1f232a; }
 :root[data-theme="solarized"] { --bg: #002b36; --sidebar: #073642; --group: #073642; --fill: #0f4552; --hover: #0e4350; --line: #174d5a; --line-soft: #0f4552; --line-strong: #3b6a74;
   --ink: #fdf6e3; --body: #eee8d5; --muted: #93a1a1; --faint: #93a1a1;
   --link: #62a7d3; --link-hover: #b6ced4; --chip: #0d455c; --chip-ink: #b6ced4; --on: #b5c97a; --on-bg: #1f4a33; --on-line: #3e6a4c; --off: #3b6a74;
-  --warn: #decd99; --warn-bg: #3a3a1c; --warn-line: #505926; --warn-dot: #c6a540; --on-warn: #decd99; --caution: #decd99; --caution-bg: #2e3a1e;
-  --diff-add: #b5c97a; --diff-del: #e9b5a7; --primary-hover: #eee8d5; color-scheme: dark; }
+  --warn: #f2a074; --warn-bg: #3d2a1c; --warn-line: #6b3d22; --warn-dot: #cb4b16; --on-warn: #f2a074; --caution: #decd99; --caution-bg: #2e3a1e;
+  --diff-add: #b5c97a; --diff-del: #e9b5a7; --primary-hover: #eee8d5; color-scheme: dark;
+  --viz-hand: #3987e5; --viz-ok: #199e70; --viz-back: #d95926; --viz-start: #9085e9; --viz-bar: #5d8a93; --viz-lane: #0b3d49; }
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; } /* a class that sets display mustn't bring back something hidden */
@@ -495,7 +499,34 @@ main.enter .grid > * { animation: rise .26s cubic-bezier(.2,.8,.2,1) both; }
 main.enter .grid > *:nth-child(2) { animation-delay: .03s; } main.enter .grid > *:nth-child(3) { animation-delay: .06s; } main.enter .grid > *:nth-child(n+4) { animation-delay: .09s; }
 button, a, input, select, textarea { transition: background-color .14s ease, color .14s ease, border-color .14s ease, box-shadow .14s ease; }
 :root { transition: background-color .25s ease; }
-@media (prefers-reduced-motion: reduce) { main.enter .grid > * { animation: none; } button, a, input, select, textarea, :root { transition: none; } }
+/* Entering a page: sections rise in turn; charts draw in (bars grow, arrows trace, dots pop). Only when the page or view changes, never on a data refresh. */
+main.enter .grid > :nth-child(n+5) { animation: rise .26s cubic-bezier(.2,.8,.2,1) .12s both; }
+main.enter .homegrid > * { animation: rise .3s cubic-bezier(.2,.8,.2,1) .08s both; } main.enter .homegrid > :nth-child(2) { animation-delay: .14s; }
+main.enter .stats > * { animation: rise .3s cubic-bezier(.2,.8,.2,1) both; } main.enter .stats > :nth-child(2) { animation-delay: .04s; } main.enter .stats > :nth-child(3) { animation-delay: .08s; } main.enter .stats > :nth-child(n+4) { animation-delay: .12s; }
+main.enter .group > li, main.enter .timeline > li { animation: rise .24s cubic-bezier(.2,.8,.2,1) both; }
+main.enter .group > li:nth-child(2), main.enter .timeline > li:nth-child(2) { animation-delay: .03s; } main.enter .group > li:nth-child(3), main.enter .timeline > li:nth-child(3) { animation-delay: .06s; } main.enter .group > li:nth-child(n+4), main.enter .timeline > li:nth-child(n+4) { animation-delay: .09s; }
+@keyframes grow { from { transform: scaleX(0); } to { transform: none; } }
+@keyframes pop { from { opacity: 0; transform: scale(.2); } to { opacity: 1; transform: none; } }
+@keyframes trace { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+main.enter .viz .bar { transform-box: fill-box; transform-origin: left center; animation: grow .5s cubic-bezier(.2,.8,.2,1) both; animation-delay: calc(var(--i, 0) * 25ms + .1s); }
+main.enter .viz .pt { transform-box: fill-box; transform-origin: center; animation: pop .35s cubic-bezier(.3,1.5,.5,1) both; animation-delay: calc(var(--i, 0) * 20ms + .35s); }
+main.enter .viz .arc { stroke-dasharray: 1; animation: trace .6s ease-out both; animation-delay: calc(var(--i, 0) * 60ms + .2s); }
+main.enter .meter .bar span, main.enter .rolebar .bar span { transform-origin: left; animation: grow .55s cubic-bezier(.2,.8,.2,1) .1s both; }
+.card, .panel { transition: box-shadow .2s ease, border-color .2s ease; }
+.card:hover { box-shadow: 0 2px 10px rgba(15, 20, 30, .06); }
+.viz [data-tip] { cursor: default; outline: none; }
+.viz .pt { transition: r .12s ease, stroke-width .12s ease; }
+.viz .hit:hover + .pt, .viz .hit:focus-visible + .pt { r: 8.5; stroke-width: 2.5; }
+.viz .bar:hover { filter: brightness(1.15); }
+.viz .arc:hover { stroke-width: 3.5; }
+.viztip { position: fixed; z-index: 50; max-width: 300px; padding: 8px 10px; border-radius: 8px; background: var(--group); color: var(--body); border: 1px solid var(--line-strong); font-size: 12px; line-height: 17px; pointer-events: none; opacity: 0; transform: translateY(4px); transition: opacity .12s ease, transform .12s ease; box-shadow: 0 4px 16px rgba(0,0,0,.18); }
+.viztip.on { opacity: 1; transform: none; }
+.viztip b { display: block; font-weight: 600; margin-bottom: 2px; color: var(--ink); }
+.vizkey { display: flex; gap: 16px; flex-wrap: wrap; margin: 4px 16px 12px; font-size: 12px; color: var(--muted); }
+.vizkey span { display: inline-flex; align-items: center; gap: 6px; }
+.vizkey i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.vizkey i.barkey { width: 18px; height: 6px; border-radius: 3px; }
+@media (prefers-reduced-motion: reduce) { main.enter .grid > *, main.enter .homegrid > *, main.enter .stats > *, main.enter .group > li, main.enter .timeline > li, main.enter .viz .bar, main.enter .viz .pt, main.enter .viz .arc, main.enter .meter .bar span, main.enter .rolebar .bar span { animation: none; } button, a, input, select, textarea, :root, .card, .panel, .viztip, .viz .pt { transition: none; } }
 .wordedby { align-self: flex-start; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 9px; background: var(--chip); color: var(--chip-ink); }
 .state.warn { background: var(--warn-bg); color: var(--warn); }
 .prwhy { margin: 0; padding: 14px 16px; border-radius: var(--radius-md); background: var(--fill); white-space: pre-wrap; font: 13px/1.6 var(--mono); color: var(--ink); }
@@ -976,6 +1007,11 @@ function handoffLine(h) {
    Over time: a lane per role, when it worked and what it posted. Waves: a session starting batches of subagents.
    Phases: a scripted workflow's phases and its review rounds. Steps: every handoff in order. */
 const runViewPick = {};
+/* Chart colours by what a moment was, from the --viz tokens each theme sets. */
+const KIND_COLOR = { handoff: "var(--viz-hand)", approved: "var(--viz-ok)", review_rejected: "var(--viz-back)", rework: "var(--viz-back)", started: "var(--viz-start)" };
+const KIND_WORD = { handoff: "handed on", approved: "approved", review_rejected: "sent work back", rework: "fixed after approval", started: "started" };
+/* Hover and focus label for a chart mark: a bold first line and a detail line. Shown by the one .viztip on the page. */
+const tipAttr = (head, body = "") => `data-tip="${esc(head)}" data-tip-body="${esc(body)}"`;
 const BACK_KINDS = new Set(["review_rejected", "rework"]);
 const isTeamPost = (h) => /^(everyone|board)$/.test(h.to_role);
 function runViews(r) {
@@ -1004,7 +1040,7 @@ function roleOrder(r) {
 }
 function shapeView(r, n) {
   const roles = roleOrder(r);
-  const W = 1000, gap = W / roles.length, bw = Math.min(150, gap - 14), bh = 64;
+  const W = Math.max(720, roles.length * 150), gap = W / roles.length, bw = Math.min(150, gap - 14), bh = 64;
   const x = (role) => roles.indexOf(role) * gap + gap / 2;
   // Edges between named roles, counted by kind; posts to the whole board count on the role instead.
   const edges = new Map(); const posts = {}; const starts = {};
@@ -1031,51 +1067,57 @@ function shapeView(r, n) {
   for (const [role, p] of Object.entries(posts)) {
     if (!p.rework || !roles.includes(role)) continue;
     const cx = x(role), yb = top + bh;
-    arcs += `<path d="M ${cx + 22} ${yb} C ${cx + 46} ${yb + 46}, ${cx - 46} ${yb + 46}, ${cx - 22} ${yb + 4}" fill="none" style="stroke:var(--warn)" stroke-width="2" marker-end="url(#head-back)"><title>${esc(roleName(role))} posted ${p.rework} fix${p.rework === 1 ? "" : "es"} after its work was approved</title></path>`;
-    labels += `<text x="${cx}" y="${yb + 58}" text-anchor="middle" font-size="12" style="fill:var(--warn);font-weight:600">${p.rework} fix${p.rework === 1 ? "" : "es"} after approval</text>`;
+    arcs += `<path class="arc" pathLength="1" d="M ${cx + 22} ${yb} C ${cx + 46} ${yb + 46}, ${cx - 46} ${yb + 46}, ${cx - 22} ${yb + 4}" fill="none" style="stroke:var(--viz-back)" stroke-width="2.5" marker-end="url(#head-back)" ${tipAttr(`${roleName(role)}: ${p.rework} fix${p.rework === 1 ? "" : "es"} after approval`, "Work it had to fix after a reviewer had already approved it.")}></path>`;
+    labels += `<text x="${cx}" y="${yb + 58}" text-anchor="middle" font-size="12" style="fill:var(--ink);font-weight:600">${p.rework} fix${p.rework === 1 ? "" : "es"} after approval</text>`;
   }
   for (const [k, count] of edges) {
     const [from, to, kind] = k.split("\u0000");
     const x1 = x(from), x2 = x(to), span = Math.abs(roles.indexOf(to) - roles.indexOf(from));
     const below = kind === "back" || (kind !== "back" && x2 < x1);
     const y0 = below ? top + bh : top, h = Math.min(110, 26 + span * 22) * (below ? 1 : -1);
-    const color = kind === "back" ? "var(--warn)" : kind === "ok" ? "var(--on)" : "var(--faint)";
+    const color = kind === "back" ? "var(--viz-back)" : kind === "ok" ? "var(--viz-ok)" : "var(--viz-hand)";
     const mx = (x1 + x2) / 2, my = y0 + h;
-    arcs += `<path d="M ${x1} ${y0} Q ${mx} ${y0 + h * 1.3} ${x2} ${y0}" fill="none" stroke="${color}" stroke-width="${kind === "back" ? 2 : 1.5}" marker-end="url(#head-${kind})"><title>${esc(roleName(from))} → ${esc(roleName(to))}: ${count}× ${kind === "back" ? "sent back" : kind === "ok" ? "approved" : "handed on"}</title></path>`;
-    labels += `<text x="${mx}" y="${my + (below ? 14 : -4)}" text-anchor="middle" font-size="12" style="fill:${color};font-weight:600">${count > 1 ? `${count}×` : ""}${kind === "back" ? " back" : ""}</text>`;
+    arcs += `<path class="arc" pathLength="1" style="--i:${edges.size > 20 ? 0 : [...edges.keys()].indexOf(k)}" d="M ${x1} ${y0} Q ${mx} ${y0 + h * 1.3} ${x2} ${y0}" fill="none" stroke="${color}" stroke-width="${kind === "back" ? 2.5 : 2}" marker-end="url(#head-${kind})" ${tipAttr(`${roleName(from)} → ${roleName(to)}`, `${count}× ${kind === "back" ? "sent work back" : kind === "ok" ? "approved" : "handed work on"}`)}></path>`;
+    labels += `<text x="${mx}" y="${my + (below ? 14 : -4)}" text-anchor="middle" font-size="12" style="fill:var(--ink);font-weight:600">${count > 1 ? `${count}×` : ""}${kind === "back" ? " back" : ""}</text>`;
   }
   const boxes = roles.map((role) => {
     const t = tokOf[role]; const p = posts[role];
     const facts = [t ? `${tok(t.tokens)} tokens` : "", starts[role] ? `started ${starts[role]}` : "", p?.approved ? `approved ${p.approved}×` : t?.approvals ? `approved ${t.approvals}×` : ""].filter(Boolean);
     const cx = x(role);
-    return `<g><rect x="${cx - bw / 2}" y="${top}" width="${bw}" height="${bh}" rx="10" style="fill:var(--group);stroke:${p?.rework || t?.sentBack ? "var(--warn)" : "var(--line-strong)"}" stroke-width="1.5"></rect>
+    return `<g><rect x="${cx - bw / 2}" y="${top}" width="${bw}" height="${bh}" rx="10" style="fill:var(--group);stroke:${p?.rework || t?.sentBack ? "var(--viz-back)" : "var(--viz-bar)"}" stroke-width="1.5" ${tipAttr(roleName(role), [t ? `${tok(t.tokens)} tokens` : "", starts[role] ? `started ${starts[role]} agent${starts[role] === 1 ? "" : "s"}` : "", p?.approved || t?.approvals ? `approved ${p?.approved || t?.approvals}×` : "", p?.rework ? `${p.rework} fix${p.rework === 1 ? "" : "es"} after approval` : ""].filter(Boolean).join(" · "))}></rect>
       <text x="${cx}" y="${top + 22}" text-anchor="middle" font-size="13" style="fill:var(--ink);font-weight:600">${esc(roleName(role).slice(0, 18))}</text>
       <text x="${cx}" y="${top + 39}" text-anchor="middle" font-size="11" style="fill:var(--muted)">${esc(facts[0] || "")}</text>
       <text x="${cx}" y="${top + 54}" text-anchor="middle" font-size="11" style="fill:${p?.rework ? "var(--warn)" : "var(--muted)"}">${esc(facts.slice(1).join(" · "))}</text></g>`;
   }).join("");
   const head = (id, color) => `<marker id="head-${id}" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" style="fill:${color}"></path></marker>`;
-  const boardNote = Object.keys(posts).length ? `<p class="note" style="margin:0 16px 12px">These agents also post to a shared board; approvals and fixes posted there are counted on each role.</p>` : "";
-  return `<div class="tablewrap"><svg viewBox="0 0 ${W} ${H}" width="100%" style="min-width:640px;display:block" role="img" aria-label="How work moved between roles in this run">
-    <defs>${head("fwd", "var(--faint)")}${head("ok", "var(--on)")}${head("back", "var(--warn)")}</defs>${arcs}${boxes}${labels}</svg></div>${boardNote}`;
+  const boardNote = `<div class="vizkey">${[["var(--viz-hand)", "handed on"], ["var(--viz-ok)", "approved"], ["var(--viz-back)", "sent back"]].map(([c, w]) => `<span><i class="barkey" style="background:${c}"></i>${w}</span>`).join("")}<span>Point at a box or arrow for details.</span></div>` + (Object.keys(posts).length ? `<p class="note" style="margin:0 16px 12px">These agents also post to a shared board; approvals and fixes posted there are counted on each role.</p>` : "");
+  return `<div class="tablewrap"><svg class="viz" viewBox="0 0 ${W} ${H}" width="100%" style="min-width:${Math.min(W, 900)}px;display:block" role="img" aria-label="How work moved between roles in this run">
+    <defs>${head("fwd", "var(--viz-hand)")}${head("ok", "var(--viz-ok)")}${head("back", "var(--viz-back)")}</defs>${arcs}${boxes}${labels}</svg></div>${boardNote}`;
 }
 function timeView(r) {
   const roles = roleOrder(r);
   const t0 = Date.parse(r.started_at), t1 = Math.max(Date.parse(r.ended_at), t0 + 60000);
-  const L = 150, W = 1000, lane = 34, top = 20, H = top + roles.length * lane + 30;
+  // Drawn near the size it shows at, so labels stay readable: 720 wide, lanes tall enough to point at.
+  const L = 130, W = 720, lane = 40, top = 12, H = top + roles.length * lane + 28;
   const X = (iso) => L + ((Date.parse(iso) - t0) / (t1 - t0)) * (W - L - 10);
   const y = (role) => top + roles.indexOf(role) * lane;
   let g = "";
-  roles.forEach((role, i) => { g += `<rect x="0" y="${top + i * lane}" width="${W}" height="${lane}" style="fill:${i % 2 ? "transparent" : "var(--fill)"}"></rect><text x="10" y="${top + i * lane + 21}" font-size="12" style="fill:var(--ink)">${esc(roleName(role).slice(0, 20))}</text>`; });
-  for (const s of r.sessions) g += `<rect x="${X(s.started_at)}" y="${y(s.role) + 13}" width="${Math.max(3, X(s.ended_at) - X(s.started_at))}" height="8" rx="4" style="fill:var(--line-strong)"><title>${esc(roleName(s.role))}: ${esc(clock(s.started_at))}–${esc(clock(s.ended_at))}</title></rect>`;
-  for (const h of r.handoffs) {
-    if (!roles.includes(h.from_role)) continue;
-    const color = BACK_KINDS.has(h.kind) ? "var(--warn)" : h.kind === "approved" ? "var(--on)" : h.kind === "started" ? "var(--faint)" : "var(--link)";
-    g += `<circle cx="${X(h.at)}" cy="${y(h.from_role) + 17}" r="${BACK_KINDS.has(h.kind) ? 5 : 4}" style="fill:${color};stroke:var(--group)" stroke-width="1.5"><title>${esc(clock(h.at))} ${esc(roleName(h.from_role))}: ${esc(h.kind.replace("_", " "))}${h.note ? ` · ${esc(clip(h.note, 90))}` : ""}</title></circle>`;
-  }
-  for (let i = 0; i <= 4; i++) { const t = new Date(t0 + ((t1 - t0) * i) / 4).toISOString(); const xx = L + ((W - L - 10) * i) / 4; g += `<text x="${xx}" y="${H - 8}" text-anchor="${i === 0 ? "start" : i === 4 ? "end" : "middle"}" font-size="11" style="fill:var(--muted)">${esc(clock(t))}</text>`; }
-  const key = [["var(--link)", "handed on"], ["var(--on)", "approved"], ["var(--warn)", "sent back or fixed"], ["var(--faint)", "started an agent"]].map(([c, w]) => `<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:9px;height:9px;border-radius:50%;background:${c}"></span>${w}</span>`).join("");
-  return `<div class="tablewrap"><svg viewBox="0 0 ${W} ${H}" width="100%" style="min-width:640px;display:block" role="img" aria-label="When each role worked in this run">${g}</svg></div>
-    <div class="note" style="display:flex;gap:16px;flex-wrap:wrap;margin:4px 16px 12px">${key}</div>`;
+  roles.forEach((role, i) => { g += `<rect x="0" y="${top + i * lane}" width="${W}" height="${lane}" style="fill:${i % 2 ? "transparent" : "var(--viz-lane)"}"></rect><text x="10" y="${top + i * lane + 25}" font-size="13" style="fill:var(--ink);font-weight:500">${esc(roleName(role).slice(0, 17))}</text>`; });
+  // When each session of a role was working: a bar. Hover says which session and what it took.
+  r.sessions.forEach((s, i) => {
+    const mins = Math.max(1, Math.round((Date.parse(s.ended_at) - Date.parse(s.started_at)) / 60000));
+    g += `<rect class="bar" style="--i:${Math.min(i, 30)};fill:var(--viz-bar)" x="${X(s.started_at)}" y="${y(s.role) + 14}" width="${Math.max(5, X(s.ended_at) - X(s.started_at))}" height="12" rx="6" tabindex="0" ${tipAttr(`${roleName(s.role)} working · ${clock(s.started_at)}–${clock(s.ended_at)}`, [`${mins} min`, `${tok(s.tokens_in + s.tokens_out)} tokens`, s.commands ? `${s.commands} command${s.commands === 1 ? "" : "s"}${s.failed_commands ? `, ${s.failed_commands} failed` : ""}` : "", s.task ? clip(s.task.replace(/\s+/g, " "), 120) : ""].filter(Boolean).join(" · "))}></rect>`;
+  });
+  // What happened at a moment: a dot, with a larger invisible ring around it so it's easy to point at.
+  r.handoffs.filter((h) => roles.includes(h.from_role)).forEach((h, i) => {
+    const color = KIND_COLOR[h.kind] || "var(--viz-hand)", cx = X(h.at), cy = y(h.from_role) + 20;
+    const head = `${clock(h.at)} · ${roleName(h.from_role)} ${KIND_WORD[h.kind] || "handed on"}${h.to_role && h.kind !== "approved" ? ` ${h.kind === "started" ? "" : "to "}${roleName(h.to_role)}` : ""}`;
+    g += `<circle class="hit" cx="${cx}" cy="${cy}" r="12" style="fill:transparent" tabindex="0" ${tipAttr(head, clip((h.note || h.evidence || "").replace(/\s+/g, " "), 200))}></circle><circle class="pt" style="--i:${Math.min(i, 30)};fill:${color};stroke:var(--group);pointer-events:none" cx="${cx}" cy="${cy}" r="${BACK_KINDS.has(h.kind) ? 7 : 5.5}" stroke-width="2"></circle>`;
+  });
+  for (let i = 0; i <= 4; i++) { const t = new Date(t0 + ((t1 - t0) * i) / 4).toISOString(); const xx = L + ((W - L - 10) * i) / 4; g += `<text x="${xx}" y="${H - 8}" text-anchor="${i === 0 ? "start" : i === 4 ? "end" : "middle"}" font-size="12" style="fill:var(--muted)">${esc(clock(t))}</text>`; }
+  const key = `<span><i class="barkey" style="background:var(--viz-bar)"></i>working</span>` + [["var(--viz-hand)", "handed on"], ["var(--viz-ok)", "approved"], ["var(--viz-back)", "sent back or fixed"], ["var(--viz-start)", "started an agent"]].map(([c, w]) => `<span><i style="background:${c}"></i>${w}</span>`).join("") + `<span>Point at a bar or dot for details.</span>`;
+  return `<div class="tablewrap"><svg class="viz" viewBox="0 0 ${W} ${H}" width="100%" style="min-width:560px;display:block" role="img" aria-label="When each role worked in this run">${g}</svg></div>
+    <div class="vizkey">${key}</div>`;
 }
 function wavesView(r) {
   const subs = r.sessions.filter((s) => s.parent_session).sort((a, b) => a.started_at.localeCompare(b.started_at));
@@ -1087,7 +1129,7 @@ function wavesView(r) {
     const counts = {}; for (const s of w.items) counts[s.role] = (counts[s.role] || 0) + 1;
     const written = w.items.reduce((a, s) => a + s.tokens_out, 0);
     const isFix = Object.keys(counts).every((role) => fix.test(role));
-    return `<div style="flex:0 0 150px;border:1px solid ${isFix ? "var(--warn)" : "var(--line)"};background:${isFix ? "var(--warn-bg)" : "var(--group)"};border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px">
+    return `<div style="flex:0 0 150px;border:1px solid ${isFix ? "var(--viz-back)" : "var(--line)"};border-left:4px solid ${isFix ? "var(--viz-back)" : "var(--viz-start)"};background:var(--group);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px">
       <div style="font:500 12px/18px var(--mono);color:var(--muted)">${esc(clock(w.at))}</div>
       <div style="font-weight:600">${w.items.length} agent${w.items.length === 1 ? "" : "s"}</div>
       ${Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([role, c]) => `<div style="font-size:13px;line-height:18px">${esc(roleName(role))} ×${c}</div>`).join("")}
@@ -1338,10 +1380,27 @@ function drawSide() {
     <nav aria-label="Sections, compact">${pill("home", "Home")}${pill("lessons", "Lessons")}${repo ? pill("plan", "Plan") : ""}${pill("impact", "Is it helping?")}${pill("activity", "Activity")}${pill("settings", "Settings")}</nav>`;
 }
 let lastTab = null;
+/* One floating label for every chart mark with data-tip: follows the pointer, or sits by a mark focused with the keyboard. */
+const vizTip = Object.assign(document.createElement("div"), { className: "viztip", role: "tooltip" });
+document.body.append(vizTip);
+function showTip(el, x, y) {
+  const head = document.createElement("b"); head.textContent = el.dataset.tip;
+  vizTip.replaceChildren(head, ...(el.dataset.tipBody ? [document.createTextNode(el.dataset.tipBody)] : []));
+  vizTip.classList.add("on");
+  const w = vizTip.offsetWidth, h = vizTip.offsetHeight;
+  vizTip.style.left = `${Math.max(8, Math.min(x + 14, innerWidth - w - 8))}px`;
+  vizTip.style.top = `${y + 16 + h > innerHeight - 8 ? y - h - 12 : y + 16}px`;
+}
+function hideTip() { vizTip.classList.remove("on"); }
+document.addEventListener("pointermove", (e) => { const el = e.target.closest?.(".viz [data-tip]"); if (el) showTip(el, e.clientX, e.clientY); else hideTip(); });
+document.addEventListener("focusin", (e) => { const el = e.target.closest?.(".viz [data-tip]"); if (!el) return hideTip(); const b = el.getBoundingClientRect(); showTip(el, b.left + b.width / 2, b.bottom); });
+document.addEventListener("scroll", hideTip, true);
 function drawPage() {
   drawSide();
   const t = currentTab();
-  if (t !== lastTab) { lastTab = t; const m = $("#main"); m.classList.remove("enter"); void m.offsetWidth; m.classList.add("enter"); clearTimeout(m._enter); m._enter = setTimeout(() => m.classList.remove("enter"), 500); }
+  // Entry animations play when the page, the run, or a run's view changes; a data refresh redraws without them.
+  const k = `${t}|${runPage || ""}|${runPage ? runViewPick[runPage] || "" : ""}`;
+  if (k !== lastTab) { lastTab = k; hideTip(); const m = $("#main"); m.classList.remove("enter"); void m.offsetWidth; m.classList.add("enter"); clearTimeout(m._enter); m._enter = setTimeout(() => m.classList.remove("enter"), 1400); }
   document.body.classList.toggle("firstrun", t === "welcome");
   const body = t === "welcome" ? welcomeView() : t === "home" ? homeView() : t === "impact" ? impactView() : t === "lessons" ? lessonsView() : t === "plan" ? (repo && data.plan ? planSection() : lessonsView())
     : t === "activity" ? (runPage ? runPageView() : activityView()) : settingsView();
