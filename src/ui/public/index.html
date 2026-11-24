@@ -1011,6 +1011,12 @@ const runViewPick = {};
 const KIND_COLOR = { handoff: "var(--viz-hand)", approved: "var(--viz-ok)", review_rejected: "var(--viz-back)", rework: "var(--viz-back)", started: "var(--viz-start)" };
 const KIND_WORD = { handoff: "handed on", approved: "approved", review_rejected: "sent work back", rework: "fixed after approval", started: "started" };
 /* Hover and focus label for a chart mark: a bold first line and a detail line. Shown by the one .viztip on the page. */
+/* The width a full-width card's chart has on screen, so charts are drawn at 1:1 and text stays its real size at any window width. */
+function vizWidth() {
+  const m = document.getElementById("main"); if (!m) return 720;
+  const cs = getComputedStyle(m);
+  return Math.max(560, Math.min(1440, m.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) - 2);
+}
 const tipAttr = (head, body = "") => `data-tip="${esc(head)}" data-tip-body="${esc(body)}"`;
 const BACK_KINDS = new Set(["review_rejected", "rework"]);
 const isTeamPost = (h) => /^(everyone|board)$/.test(h.to_role);
@@ -1040,7 +1046,7 @@ function roleOrder(r) {
 }
 function shapeView(r, n) {
   const roles = roleOrder(r);
-  const W = Math.max(720, roles.length * 150), gap = W / roles.length, bw = Math.min(150, gap - 14), bh = 64;
+  const W = Math.max(vizWidth(), roles.length * 150), gap = W / roles.length, bw = Math.min(150, gap - 14), bh = 64;
   const x = (role) => roles.indexOf(role) * gap + gap / 2;
   // Edges between named roles, counted by kind; posts to the whole board count on the role instead.
   const edges = new Map(); const posts = {}; const starts = {};
@@ -1091,14 +1097,14 @@ function shapeView(r, n) {
   }).join("");
   const head = (id, color) => `<marker id="head-${id}" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" style="fill:${color}"></path></marker>`;
   const boardNote = `<div class="vizkey">${[["var(--viz-hand)", "handed on"], ["var(--viz-ok)", "approved"], ["var(--viz-back)", "sent back"]].map(([c, w]) => `<span><i class="barkey" style="background:${c}"></i>${w}</span>`).join("")}<span>Point at a box or arrow for details.</span></div>` + (Object.keys(posts).length ? `<p class="note" style="margin:0 16px 12px">These agents also post to a shared board; approvals and fixes posted there are counted on each role.</p>` : "");
-  return `<div class="tablewrap"><svg class="viz" viewBox="0 0 ${W} ${H}" width="100%" style="min-width:${Math.min(W, 900)}px;display:block" role="img" aria-label="How work moved between roles in this run">
+  return `<div class="tablewrap"><svg class="viz" viewBox="0 0 ${W} ${H}" width="100%" style="min-width:${W}px;display:block" role="img" aria-label="How work moved between roles in this run">
     <defs>${head("fwd", "var(--viz-hand)")}${head("ok", "var(--viz-ok)")}${head("back", "var(--viz-back)")}</defs>${arcs}${boxes}${labels}</svg></div>${boardNote}`;
 }
 function timeView(r) {
   const roles = roleOrder(r);
   const t0 = Date.parse(r.started_at), t1 = Math.max(Date.parse(r.ended_at), t0 + 60000);
   // Drawn near the size it shows at, so labels stay readable: 720 wide, lanes tall enough to point at.
-  const L = 130, W = 720, lane = 40, top = 12, H = top + roles.length * lane + 28;
+  const L = 130, W = vizWidth(), lane = 40, top = 12, H = top + roles.length * lane + 28;
   const X = (iso) => L + ((Date.parse(iso) - t0) / (t1 - t0)) * (W - L - 10);
   const y = (role) => top + roles.indexOf(role) * lane;
   let g = "";
@@ -1395,6 +1401,8 @@ function hideTip() { vizTip.classList.remove("on"); }
 document.addEventListener("pointermove", (e) => { const el = e.target.closest?.(".viz [data-tip]"); if (el) showTip(el, e.clientX, e.clientY); else hideTip(); });
 document.addEventListener("focusin", (e) => { const el = e.target.closest?.(".viz [data-tip]"); if (!el) return hideTip(); const b = el.getBoundingClientRect(); showTip(el, b.left + b.width / 2, b.bottom); });
 document.addEventListener("scroll", hideTip, true);
+// Charts are drawn for the width they have, so a resized window redraws the run page (without replaying animations).
+let resizeTimer; addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { if (runPage) draw(); }, 150); });
 function drawPage() {
   drawSide();
   const t = currentTab();
