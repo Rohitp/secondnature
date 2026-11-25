@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
 import { basename, dirname, extname, isAbsolute, relative, resolve } from "node:path";
 import { redact } from "../privacy/redact.js";
+import { costMoments } from "./cost-signals.js";
 import { cosine, type Embed } from "../embed/model.js";
 import type { Session } from "../logs/types.js";
 
-export type Signal = "repeat" | "correction" | "failure_then_fix" | "mistake_returned" | "explained" | "loop" | "refetch" | "stopped" | "confused" | "friction" | "wrong_path" | "big_file" | "big_output" | "reread" | "one_by_one" | "skimmed" | "stated" | "promised" | "sent_back" | "missed" | "unanswered";
+export type Signal = "repeat" | "correction" | "failure_then_fix" | "mistake_returned" | "explained" | "loop" | "refetch" | "stopped" | "confused" | "friction" | "wrong_path" | "big_file" | "big_output" | "reread" | "one_by_one" | "skimmed" | "stated" | "promised" | "sent_back" | "missed" | "unanswered" | "heavy_context" | "wait_loop" | "big_session_ask";
 export type Moment = {
   signal: Signal; text: string; quotes: { tool: string; session: string; ts: string; quote: string }[];
   sessions: number; days: number; wordings: number; tools: string[]; last: string; vector?: Float32Array;
@@ -122,7 +123,7 @@ export async function findMoments(sessions: Session[], embed: Embed, opts: { cut
     if (kept) moments.push(m);
     opts.trace?.({ signal: "correction", texts: c.items.map((i) => `${i.text}   ⟵ after: ${i.before?.slice(0, 100) ?? ""}`), times: c.items.length, sessions: m.sessions, wordings: m.wordings, days: m.days, hours: spanHours(c), kept });
   }
-  moments.push(...commandMoments(sessions), ...explainedMoments(sessions), ...intentMoments(sessions), ...pathMoments(sessions), ...wasteMoments(sessions), ...skimMoments(sessions), ...statedMoments(sessions), ...promisedMoments(sessions));
+  moments.push(...commandMoments(sessions), ...explainedMoments(sessions), ...intentMoments(sessions), ...pathMoments(sessions), ...wasteMoments(sessions), ...costMoments(sessions), ...skimMoments(sessions), ...statedMoments(sessions), ...promisedMoments(sessions));
   return moments;
 }
 
@@ -540,7 +541,7 @@ function wasteMoments(sessions: Session[]): Moment[] {
 }
 
 /** Wasted effort without the embedding model: failing, looping and re-run commands, stops, wrong paths, oversized output, re-reads and step-by-step runs. For insights. */
-export function effortMoments(sessions: Session[]): Moment[] { return [...commandMoments(sessions), ...pathMoments(sessions), ...wasteMoments(sessions)]; }
+export function effortMoments(sessions: Session[]): Moment[] { return [...commandMoments(sessions), ...pathMoments(sessions), ...wasteMoments(sessions), ...costMoments(sessions)]; }
 
 /**
  * A standing instruction said outright: "from now on…", "let's branch and merge for features with PRs",

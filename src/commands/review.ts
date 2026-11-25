@@ -65,6 +65,8 @@ export function defaultRoute(l: Pick<Lesson, "text" | "kind" | "signal" | "sugge
   // A rule you stated once: told every session, but in this repo only until you widen it or it comes up elsewhere.
   if (l.signal === "stated") return { route: "always", keywords: [], global: false };
   if (isPreference(l)) return { route: "always", keywords: [], global: true };
+  // How agents are run (fresh agent per phase, no polling): a habit everywhere, told at the start of every session.
+  if (l.signal === "heavy_context" || l.signal === "wait_loop" || l.signal === "big_session_ask") return { route: "always", keywords: [], global: true };
   const suggested: string[] = (l.suggested_keywords ? (JSON.parse(l.suggested_keywords) as string[]) : []).filter(usefulKeyword);
   const guess = suggestKeyword(l.text);
   const global = l.suggested_scope === "global";

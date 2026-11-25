@@ -1344,7 +1344,7 @@ const KIND_SHORT = {
   friction: "Friction", steered: "You steered", promised: "Agent promised", sent_back: "Agent corrected agent", missed: "Missed by a reviewer",
   unanswered: "Agents kept asking", wrong_path: "Looked in the wrong place", failure_then_fix: "Failed, then fixed", loop: "Same command failed again",
   mistake_returned: "Mistake came back", stopped: "You stopped the agent", reread: "Read the same file again", refetch: "Fetched the same page again",
-  one_by_one: "Done one at a time", skimmed: "Skimmed a long output", big_output: "Very long output", big_file: "Read a very large file",
+  one_by_one: "Done one at a time", heavy_context: "Context re-read every step", wait_loop: "Waited in a loop", big_session_ask: "Small job, big session", skimmed: "Skimmed a long output", big_output: "Very long output", big_file: "Read a very large file",
 };
 const kindOf = (l) => KIND_SHORT[l.signal] || (l.kind === "note" ? "Note" : "Lesson");
 /** Whose words a lesson is in: yours if you edited or stated it, else your Claude's. */

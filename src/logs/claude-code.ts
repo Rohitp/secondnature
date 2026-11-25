@@ -2,7 +2,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { notTyped, parseLines, readText, sessionIdOf, STOPPED, stripPrivate, textOf, type AgentMessage, type LogEvent, type Session } from "./types.js";
+import { LIMIT_HIT, notTyped, parseLines, readText, sessionIdOf, STOPPED, stripPrivate, textOf, type AgentMessage, type LogEvent, type Session } from "./types.js";
 
 /** Claude Code's own tools that name a file or folder. */
 const FILE_TOOLS = new Set(["Read", "Edit", "MultiEdit", "Write", "NotebookEdit", "Grep", "Glob", "Skill"]);
@@ -26,6 +26,7 @@ export function readClaude(file: string): Session {
   const launches: NonNullable<Session["launches"]> = [];
   // What each tool call asked for, until its result arrives: a shell command, or a file tool and the path it named.
   const pending = new Map<string, { cmd: string } | { tool: string; path: string; pattern?: string; part?: boolean; range?: string }>();
+  const limitHits: string[] = [];
   let cwd = "", clientVersion = "unknown", unknown = 0, branch = "", title = "";
   for (const o of parseLines(file, readText)) {
     // New record types are normal. A message without the expected shape means the format changed.
@@ -42,6 +43,8 @@ export function readClaude(file: string): Session {
       turns.push({ ts: o.timestamp ?? "", input: (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0), output: u.output_tokens ?? 0, cacheRead: u.cache_read_input_tokens ?? 0 });
       if (o.message.model && o.message.model !== "<synthetic>") model = o.message.model;
     }
+    // The usage limit: the app's notice (a hidden message) or the agent telling the engineer. Checked before hidden messages are skipped.
+    if ((o.type === "user" || o.type === "assistant") && o.timestamp) { const t = typeof o.message?.content === "string" ? o.message.content : textOf(o.message?.content); if (t && t.length < 4000 && LIMIT_HIT.test(t)) limitHits.push(o.timestamp); }
     // In a subagent's own log every record is a "sidechain". Its first message is the task its parent handed it, not you.
     if (o.isMeta || (o.isSidechain && !sub)) continue;
     if (sub && o.type === "user" && !task && typeof o.message?.content === "string") { task = o.message.content; continue; }
@@ -105,7 +108,7 @@ export function readClaude(file: string): Session {
       if (typeof path === "string" && path) pending.set(x.id, { tool: String(x.name).toLowerCase(), path, ...(typeof x.input?.pattern === "string" ? { pattern: x.input.pattern } : {}), ...(x.input?.offset != null || x.input?.limit != null ? { part: true, range: `${x.input?.offset ?? 1}+${x.input?.limit ?? ""}` } : {}) });
     }
   }
-  const base: Session = { id: sessionIdOf(file), tool: "claude-code", cwd, clientVersion, events, unknown, branch: branch || undefined, file, usage, turns, ...(model ? { model } : {}), ...(messages.length ? { messages } : {}), ...(launches.length ? { launches } : {}), ...(title ? { title } : {}) };
+  const base: Session = { id: sessionIdOf(file), tool: "claude-code", cwd, clientVersion, events, unknown, branch: branch || undefined, file, usage, turns, ...(model ? { model } : {}), ...(messages.length ? { messages } : {}), ...(launches.length ? { launches } : {}), ...(title ? { title } : {}), ...(limitHits.length ? { limitHits } : {}) };
   if (!sub) return base;
   let meta: { agentType?: string; description?: string; name?: string; workflowPhase?: string; inWorkflowRun?: boolean } = {};
   const metaFile = join(dirname(file), `${sessionIdOf(file)}.meta.json`);
