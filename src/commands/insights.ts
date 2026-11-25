@@ -3,6 +3,7 @@ import { effortMoments } from "../learn/signals.js";
 import { wasteIndex, type WasteRow } from "../learn/waste-index.js";
 import { HEAVY_CONTEXT, spendBreakdown, type SpendBreakdown } from "../learn/spend.js";
 import { limitReports, LIMIT_WINDOW_HOURS, type LimitReport } from "../learn/cost-signals.js";
+import { habitChecks, type HabitCheck } from "../learn/habit-check.js";
 import { scanLogs } from "../logs/discover.js";
 import type { Session } from "../logs/types.js";
 import { repoIdentity } from "../repo/identity.js";
@@ -25,6 +26,8 @@ export type Insights = {
   cost: SpendBreakdown;
   /** Each time the usage limit was hit, what the hours before it went on, across every repo. */
   limits: LimitReport[];
+  /** Lessons about how agents are run, measured across every repo before and since you kept them. */
+  habits: HabitCheck[];
   /** Where output tokens went, per command and per file read, biggest cost first (top 10). */
   index: WasteRow[];
   effort: { wastedTokens: number; byKind: { kind: string; label: string; tokens: number; count: number }[]; top: { text: string; tokens: number }[]; stopped: number; interrupted: number };
@@ -77,6 +80,7 @@ export async function insightsData(db: Client, repo: string | null, days = 7, se
     days, repo,
     sessions: { total: here.length, byTool, byRepo, byAgent: here.filter((s) => s.unattended).length },
     cost: spendBreakdown(here, since),
+    habits: await habitChecks(db, all),
     limits: limitReports(all.filter((s) => lastTs(s) >= since), since),
     index: wasteIndex(here, since).slice(0, 10),
     effort: {
@@ -162,6 +166,10 @@ export function insightsText(i: Insights): string {
   out.push("", "Lessons");
   out.push(`  Told ${i.lessons.told} time(s) in ${i.lessons.toldSessions} session(s). Of ${i.lessons.kept} kept, ${i.lessons.working} were told and haven't come back.`);
   for (const c of i.lessons.cameBack) out.push(`  Came back: "${c.text.slice(0, 90)}${c.text.length > 90 ? "…" : ""}". ${c.verdict}`);
+  if (i.habits.length) {
+    out.push("", "How agents are run: lessons you kept, before and since (every repo)");
+    for (const h of i.habits) out.push(`  "${h.text.length > 90 ? h.text.slice(0, 89) + "…" : h.text}" (kept ${h.keptAt.slice(0, 10)})`, `    ${h.verdict}`);
+  }
   if (i.asked.count) {
     out.push("", "What agents asked");
     out.push(`  ${i.asked.count} question(s), ${i.asked.found} found something (${Math.round((i.asked.found / i.asked.count) * 100)}%). Most often they ${i.asked.bySurface.slice(0, 3).map((x) => `${ASKED_HOW[x.surface] ?? x.surface.replace(/_/g, " ")} (${x.count})`).join(", ")}.`);
