@@ -8,9 +8,19 @@ Inside, it goes by its code name, **muninn**, and so does its command: `muninn` 
 
 > In Norse myth, Muninn ("memory") is one of Odin's two ravens. Each day it flies out over the world and comes back to tell him what it saw.
 
+## Try it
+
+On macOS or Linux with Node 22 or later, run:
+
+```sh
+npx secondnature setup
+```
+
+Setup shows which coding tools it found and lets you choose which ones to connect. After it scans your sessions, you can review the lessons it found and keep the ones you want your agents to use. See [Install](#install) for the full setup and prerequisites.
+
 ## What it does
 
-You tell an agent the same things over and over: "explain it step by step", "the benchmarks folder is at the repo root", "use `poetry run python`, not bare `python`". Next session, it's forgotten. muninn fixes that in three steps:
+You tell an agent the same things over and over: "explain it step by step", "the benchmarks folder is at the repo root", "use `poetry run python`, not bare `python`". Next session, it's forgotten. Here’s what muninn does:
 
 1. **It learns from your sessions.** After you work, muninn looks through the session logs on your machine for:
    - rules you state, even once ("from now on…", "let's put every feature on a branch"), marked "said once" until they come up again
