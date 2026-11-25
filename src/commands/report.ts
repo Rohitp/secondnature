@@ -118,7 +118,13 @@ export async function report(args: string[]) {
     console.log("\nLessons for one role in a team of agents, measured on workflow runs before and since:");
     for (const e of roles) console.log(`\n${e.id.slice(0, 8)}  for the ${e.role}: ${e.text.length > 90 ? e.text.slice(0, 89) + "…" : e.text}\n  ${e.summary}`);
   }
-  console.log(`\nHandoffs: ${r.handoffs.written} written, ${r.handoffs.delivered} delivered.`);
+  // Lessons about how agents are run: measured on every repo's sessions, before and since.
+  const habits = await (await import("../learn/habit-check.js")).habitChecks(db, (await import("../logs/discover.js")).scanLogs().sessions);
+  if (habits.length) {
+    console.log("\nHow agents are run, measured across every repo before and since you kept each lesson:");
+    for (const h of habits) console.log(`\n${h.id.slice(0, 8)}  ${h.text.length > 100 ? h.text.slice(0, 99) + "…" : h.text}\n  ${h.verdict}`);
+  }
+  console.log(`\nHandoffs: ${r.handoffs.written}, ${r.handoffs.delivered} delivered.`);
   console.log(`\nLast ${r.days} days, all repos:`);
   console.log(`  Added to agents' context: about ${r.delivered.tokens.toLocaleString()} tokens across ${r.delivered.sessions} session(s).`);
   if (!r.spend.length) console.log("  muninn's own AI calls: none recorded yet.");
