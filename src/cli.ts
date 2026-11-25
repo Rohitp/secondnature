@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ensureHome, home } from "./config.js";
+import { ensureHome, home, isPaused } from "./config.js";
 
 const [cmd, ...args] = process.argv.slice(2);
 const USAGE = `muninn: lessons that carry across coding sessions
@@ -349,6 +349,14 @@ async function runHook(client: string, agEvent?: string) {
       if (grown >= (event === "PreCompact" ? cp.GROWTH.compact : cp.GROWTH.working)) auto.startCheckpoint(t, client);
       // A long session may never end, so it gets a lesson scan every few hours instead of waiting for its end.
       if (event === "Stop" && auto.longScanDue(statSync(t).size)) auto.startAutoScan({ force: true });
+      return;
+    }
+    // Claude Code, after a shell command: only the context watch. Lessons go out on failures, not on every command.
+    if (client === "claude-code" && event === "PostToolUse") {
+      if (isPaused()) return;
+      const [{ openDb }, { watchSession }, { hookOutput }] = await Promise.all([import("./store/db.js"), import("./deliver/watch.js"), import("./deliver/hook.js")]);
+      const text = await watchSession(input, () => openDb({ lockWaitMs: 100 }));
+      if (text) process.stdout.write(hookOutput(event, text));
       return;
     }
     const [{ openDb }, { deliver, hookOutput }] = await Promise.all([import("./store/db.js"), import("./deliver/hook.js")]);
