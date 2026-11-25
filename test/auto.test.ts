@@ -81,7 +81,7 @@ describe("install", () => {
   it("installs every hook once, with a Bash matcher on failures, and uninstall removes them all", () => {
     install(); install();
     const c = JSON.parse(readFileSync(f(), "utf8"));
-    expect(installed()).toEqual(["SessionStart", "UserPromptSubmit", "PostToolUseFailure", "SubagentStart", "Stop", "PreCompact", "SessionEnd", "TaskCreated", "TaskCompleted", "TeammateIdle"]);
+    expect(installed()).toEqual(["SessionStart", "UserPromptSubmit", "PostToolUseFailure", "PostToolUse", "SubagentStart", "Stop", "PreCompact", "SessionEnd", "TaskCreated", "TaskCompleted", "TeammateIdle"]);
     expect(c.hooks.PostToolUseFailure).toEqual([expect.objectContaining({ matcher: "Bash|Read|Edit|MultiEdit|Write|NotebookEdit|Grep|Glob" })]);
     const codex = JSON.parse(readFileSync(process.env.MUNINN_CODEX_HOOKS!, "utf8"));
     expect(installed("codex")).toEqual(["SessionStart", "UserPromptSubmit", "PostToolUse", "SubagentStart", "Stop", "PreCompact", "SessionEnd"]);

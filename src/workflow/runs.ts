@@ -16,6 +16,8 @@ export type RunSession = {
   /** A separate session another one started in the desktop app: the starting session's id. */
   launched_by?: string;
   started_at: string; ended_at: string; tokens_in: number; tokens_out: number; cache_read: number; model: string | null;
+  /** Model calls, and the name the app gave the session, when known. */
+  steps?: number; title?: string;
   commands: number; failed_commands: number; task: string | null;
   /** Messages the engineer typed: 0 for a session that ran on its own. */
   typed: number;
@@ -183,7 +185,7 @@ function toRunSession(s: Session): RunSession {
   return {
     id: s.id, tool: s.tool, role: roleOf(s), branch: s.branch ?? null, worktree: s.parent ? null : worktreeOf(s.cwd), parent_session: s.parent ?? null, agent_type: s.agentType ?? null,
     ...(s.launchedBy ? { launched_by: s.launchedBy } : {}),
-    started_at: t0, ended_at: t1, tokens_in: turns.reduce((n, t) => n + t.input, 0), tokens_out: turns.reduce((n, t) => n + t.output, 0), cache_read: turns.reduce((n, t) => n + (t.cacheRead ?? 0), 0), model: s.model ?? null,
+    started_at: t0, ended_at: t1, tokens_in: turns.reduce((n, t) => n + t.input, 0), tokens_out: turns.reduce((n, t) => n + t.output, 0), cache_read: turns.reduce((n, t) => n + (t.cacheRead ?? 0), 0), model: s.model ?? null, steps: turns.length, ...(s.title ? { title: s.title } : {}),
     commands: cmds.length, failed_commands: cmds.filter((e) => e.k === "cmd" && e.failed).length, task: s.task?.slice(0, 300) ?? null,
     typed: s.events.filter((e) => e.k === "typed").length,
     ...(s.workflow ? { workflow_id: s.workflow.id, ...(s.workflow.phase ? { phase: s.workflow.phase } : {}), ...(s.workflow.label ? { label: s.workflow.label } : {}) } : {}),

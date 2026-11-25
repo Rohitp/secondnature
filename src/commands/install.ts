@@ -21,7 +21,8 @@ const isOurs = (h: any) => typeof h?.command === "string" && h.command.includes(
 export const EVENTS: Record<Client, Record<string, string | undefined>> = {
   // Stop (Claude finished a reply) and PreCompact keep the branch's plan current during long sessions.
   // Failures of file reads, edits and searches too, so a wrong path retried over and over is caught as it happens.
-  "claude-code": { SessionStart: undefined, UserPromptSubmit: undefined, PostToolUseFailure: "Bash|Read|Edit|MultiEdit|Write|NotebookEdit|Grep|Glob", SubagentStart: undefined, Stop: undefined, PreCompact: undefined, SessionEnd: undefined,
+  // After each shell command: how much context every step re-reads, and waiting in a loop of checks (see deliver/watch.ts).
+  "claude-code": { SessionStart: undefined, UserPromptSubmit: undefined, PostToolUseFailure: "Bash|Read|Edit|MultiEdit|Write|NotebookEdit|Grep|Glob", PostToolUse: "Bash", SubagentStart: undefined, Stop: undefined, PreCompact: undefined, SessionEnd: undefined,
     // Agent teams: which session is which teammate, and the tasks they hand each other. Recorded only; nothing is told.
     TaskCreated: undefined, TaskCompleted: undefined, TeammateIdle: undefined },
   codex: { SessionStart: undefined, UserPromptSubmit: undefined, PostToolUse: "Bash", SubagentStart: undefined, Stop: undefined, PreCompact: undefined, SessionEnd: undefined },
