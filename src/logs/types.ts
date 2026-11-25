@@ -76,7 +76,9 @@ export const textOf = (c: unknown): string =>
   typeof c === "string" ? c
   : Array.isArray(c) ? c.map((x: any) => (["text", "input_text", "output_text"].includes(x?.type) ? x.text ?? "" : "")).join(" ")
   : "";
-const NOT_TYPED = ["<", "Caveat:", "[Request interrupted", "This session is being continued", "Base directory for this skill", "## My request", "# Files pasted by the user", "Pasted text contains", "Briefly inform the user about the task result"];
+/** How the Claude desktop app hands a session a message from another session, before the wrapped message. */
+export const FROM_SESSION = "Another Claude session sent a message";
+const NOT_TYPED = ["<", FROM_SESSION, "Caveat:", "[Request interrupted", "This session is being continued", "Base directory for this skill", "## My request", "# Files pasted by the user", "Pasted text contains", "Briefly inform the user about the task result"];
 export const notTyped = (t: string) => NOT_TYPED.some((s) => t.trimStart().startsWith(s));
 export const isOwnRun = (s: Session) => s.events.some((e) => e.k === "typed" && e.text.includes(OWN_RUN_MARK));
 /** A tool result showing the engineer stopped or rejected the call, rather than the command failing. */

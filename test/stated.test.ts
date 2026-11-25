@@ -50,6 +50,29 @@ describe("catching one as you type it", () => {
     await addEvidence(db, waiting[0]!.id, [{ tool: "claude-code", session: "s2", ts: "t", quote: "from now on, feature branches" }]);
     expect(await originOf(db, waiting[0]!)).toMatch(/said in 2 sessions/);
   });
+
+  it("ignores messages another session sent in, which arrive as prompts too", async () => {
+    const db = await openDb();
+    const prompt = (text: string) => deliver(db, "claude-code", { hook_event_name: "UserPromptSubmit", session_id: "coord", cwd, prompt: text });
+    await prompt('Another Claude session sent a message:\n<cross-session-message from="local_1" from-name="Milestone 17">\nFrom now on wrap the gate like this: lockf -k /tmp/ci.lock make ci-local\n</cross-session-message>');
+    await prompt('<task-notification>From now on, run the gate one session at a time.</task-notification>');
+    expect(await listLessons(db, { repo, status: "proposed" })).toEqual([]);
+  });
+});
+
+describe("messages from other sessions in the logs", () => {
+  it("are the sender's messages, not the engineer's typing, whether queued or not", () => {
+    const f = join(tmp(), "coord.jsonl");
+    const body = "From now on wrap the gate like this: lockf make ci-local";
+    write(f, [
+      { type: "user", cwd, timestamp: "2026-11-24T10:00:00Z", message: { content: "build milestone 17" } },
+      { type: "attachment", timestamp: "2026-11-24T10:01:00Z", attachment: { type: "queued_command", origin: { kind: "peer", name: "Milestone 17", body }, prompt: `Another Claude session sent a message:\n<cross-session-message from="local_1" from-name="Milestone 17">\n${body}\n</cross-session-message>` } },
+      { type: "user", timestamp: "2026-11-24T10:02:00Z", message: { content: `Another Claude session sent a message:\n<cross-session-message from="local_2" from-name="Design">\nScreens are done.\n</cross-session-message>` } },
+    ]);
+    const s = readClaude(f);
+    expect(s.events.filter((e) => e.k === "typed").map((e) => (e as { text: string }).text)).toEqual(["build milestone 17"]);
+    expect(s.messages?.map((m) => [m.from, m.text])).toEqual([["Milestone 17", body], ["Design", "Screens are done."]]);
+  });
 });
 
 describe("lessons kept while a session runs", () => {
