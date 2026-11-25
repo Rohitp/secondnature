@@ -2,7 +2,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { LIMIT_HIT, notTyped, parseLines, readText, sessionIdOf, STOPPED, stripPrivate, textOf, type AgentMessage, type LogEvent, type Session } from "./types.js";
+import { FROM_SESSION, LIMIT_HIT, notTyped, parseLines, readText, sessionIdOf, STOPPED, stripPrivate, textOf, type AgentMessage, type LogEvent, type Session } from "./types.js";
 
 /** Claude Code's own tools that name a file or folder. */
 const FILE_TOOLS = new Set(["Read", "Edit", "MultiEdit", "Write", "NotebookEdit", "Grep", "Glob", "Skill"]);
@@ -52,15 +52,17 @@ export function readClaude(file: string): Session {
     // A message sent while the agent was working is logged as a queued command, not a user message.
     if (o.type === "attachment" && o.attachment?.type === "queued_command" && typeof o.attachment.prompt === "string") {
       const t = o.attachment.prompt;
+      // A message another session sent while this one was working: theirs, not the engineer's.
+      if (o.attachment.origin?.kind === "peer" || t.trimStart().startsWith(FROM_SESSION)) { messages.push({ ts: o.timestamp ?? "", dir: "in", from: o.attachment.origin?.name ?? null, to: [], text: stripPrivate(String(o.attachment.origin?.body ?? t)).slice(0, 2000) }); continue; }
       if (!notTyped(t)) events.push({ k: "typed", text: stripPrivate(t), ts: o.timestamp ?? "" });
       continue;
     }
     const c = o.message?.content;
     const ts = o.timestamp ?? "";
     // A message from a teammate arrives as a user turn wrapped in a tag naming the sender (agent teams; not documented).
-    const wrapped = o.type === "user" ? (typeof c === "string" ? c : textOf(c)).match(/^\s*<(teammate-message|agent-message|cross-session-message)\b([^>]*)>([\s\S]*?)<\/\1>/) : null;
+    const wrapped = o.type === "user" ? (typeof c === "string" ? c : textOf(c)).match(/^\s*(?:Another Claude session sent a message:\s*)?<(teammate-message|agent-message|cross-session-message)\b([^>]*)>([\s\S]*?)<\/\1>/) : null;
     if (wrapped) {
-      const from = wrapped[2]!.match(/\b(?:teammate_id|from|from-name|sender|name)="([^"]+)"/)?.[1] ?? null;
+      const from = (wrapped[2]!.match(/\bfrom-name="([^"]+)"/) ?? wrapped[2]!.match(/\b(?:teammate_id|from|sender|name)="([^"]+)"/))?.[1] ?? null;
       messages.push({ ts, dir: "in", from, to: [], text: stripPrivate(wrapped[3]!.trim()).slice(0, 2000) });
       continue;
     }

@@ -73,7 +73,8 @@ export async function deliver(db: Client, client: string, input: HookInput): Pro
     if (repo) await db.execute({ sql: "INSERT OR IGNORE INTO repos (id,paths) VALUES (?,?)", args: [repo, JSON.stringify([(await import("../repo/identity.js")).mainFolder(input.cwd)])] });
   }
   // A standing instruction you typed becomes a suggestion now, whatever the dial says: nothing is told to agents here.
-  if (event === "UserPromptSubmit" && input.prompt) { try { await catchStanding(db, repo, session, client, input.prompt); } catch { /* never block a prompt */ } }
+  // Only what a person typed: not a message another session or agent sent in (those arrive as prompts too).
+  if (event === "UserPromptSubmit" && input.prompt && !(await import("../logs/types.js")).notTyped(input.prompt)) { try { await catchStanding(db, repo, session, client, input.prompt); } catch { /* never block a prompt */ } }
   // The dial: quiet holds everything back; "start" speaks only when a session starts, never mid-task.
   // Loops are counted whatever the setting, so the panel can show them; the agent is told only mid-task.
   const loopHint = failed(event, input) && session ? await trackLoop(db, session, repo, input) : null;
