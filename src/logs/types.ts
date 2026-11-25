@@ -25,6 +25,10 @@ export type Session = {
   id: string; tool: Tool; cwd: string; clientVersion: string; events: LogEvent[]; unknown: number; branch?: string; file?: string;
   /** Tokens the session's model read and wrote, when the log records them. */
   usage?: Usage; model?: string;
+  /** The name the session was given in the app ("Milestone 14: privacy and integrity"), when the log records one. */
+  title?: string;
+  /** Nobody typed in it: another session or agent started it with a brief and ran it. Counted for cost and effort, never for what the engineer said. Set by scans. */
+  unattended?: boolean;
   /** Tokens per model reply, with its time, so a slice of a long session can be measured on its own. */
   turns?: { ts: string; input: number; output: number; cacheRead?: number }[];
   /** A subagent: the session that started it, its type ("Explore", "general-purpose", a custom agent), and the task it was handed. */

@@ -1,6 +1,7 @@
 import type { Client } from "@libsql/client";
 import { effortMoments } from "../learn/signals.js";
 import { wasteIndex, type WasteRow } from "../learn/waste-index.js";
+import { HEAVY_CONTEXT, spendBreakdown, type SpendBreakdown } from "../learn/spend.js";
 import { scanLogs } from "../logs/discover.js";
 import type { Session } from "../logs/types.js";
 import { repoIdentity } from "../repo/identity.js";
@@ -17,7 +18,9 @@ const KIND: Record<string, string> = {
 };
 export type Insights = {
   days: number; repo: string | null;
-  sessions: { total: number; byTool: Record<string, number>; byRepo: Record<string, number> };
+  sessions: { total: number; byTool: Record<string, number>; byRepo: Record<string, number>; byAgent: number };
+  /** Where the spend went, per session, with every call's context counted (cached re-reads included). */
+  cost: SpendBreakdown;
   /** Where output tokens went, per command and per file read, biggest cost first (top 10). */
   index: WasteRow[];
   effort: { wastedTokens: number; byKind: { kind: string; label: string; tokens: number; count: number }[]; top: { text: string; tokens: number }[]; stopped: number; interrupted: number };
@@ -68,7 +71,8 @@ export async function insightsData(db: Client, repo: string | null, days = 7, se
 
   return {
     days, repo,
-    sessions: { total: here.length, byTool, byRepo },
+    sessions: { total: here.length, byTool, byRepo, byAgent: here.filter((s) => s.unattended).length },
+    cost: spendBreakdown(here, since),
     index: wasteIndex(here, since).slice(0, 10),
     effort: {
       wastedTokens: moments.reduce((a, m) => a + (m.wasted ?? 0), 0),
@@ -99,7 +103,27 @@ export async function insightsData(db: Client, repo: string | null, days = 7, se
   };
 }
 
-const k = (n: number) => (n >= 10_000 ? `${Math.round(n / 1000)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+const pct = (x: number) => `${x >= 0.01 ? Math.round(x * 100) : "<1"}%`;
+/** "Where the spend went": the sessions that cost the most, with the context each re-read on every step. */
+export function spendLines(c: SpendBreakdown, top = 6): string[] {
+  if (!c.rows.length) return [];
+  const usd = (x: number) => (x >= 100 ? `$${Math.round(x)}` : `$${x.toFixed(2)}`);
+  const out = ["", `Where the spend went (${c.total.priced ? `about ${usd(c.total.costUsd)} at list price, ` : ""}every step's context counted)`];
+  for (const r of c.rows.slice(0, top)) {
+    const who = r.coordinator ? "coordinator" : r.by === "agent" ? "run by an agent" : "you";
+    const bits = [`${r.total.steps} steps`, `about ${k(r.total.contextAvg)} context per step`];
+    if (r.subagents.steps && r.total.costUsd) bits.push(`subagents ${pct(r.subagents.costUsd / r.total.costUsd)} of it`);
+    out.push(`  ${pct(r.share)} ${r.label} (${who}): ${bits.join(", ")}`);
+  }
+  if (c.rows.length > top) out.push(`  …and ${c.rows.length - top} more session(s), ${pct(c.rows.slice(top).reduce((a, r) => a + r.share, 0))} together.`);
+  const types = c.subagentTypes.filter((t) => t.share >= 0.01).slice(0, 4);
+  if (types.length) out.push(`  Subagents by type: ${types.map((t) => `${t.type} ${pct(t.share)}`).join(", ")}.`);
+  if (c.reReadShare >= 0.5) out.push(`  ${pct(c.reReadShare)} of the context taken in was the same context re-read on the next step, not new work.`);
+  const heavy = c.rows.filter((r) => r.total.heavySteps >= 20);
+  if (heavy.length) out.push(`  ${heavy.length} session(s) carried over ${k(HEAVY_CONTEXT)} of context per step for ${heavy.reduce((a, r) => a + r.total.heavySteps, 0)} steps; each small step re-read all of it.`);
+  return out;
+}
+const k = (n: number) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)} billion` : n >= 1e6 ? `${(n / 1e6).toFixed(1)} million` : n >= 10_000 ? `${Math.round(n / 1000)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
 /** Each way of asking, in plain words. */
 const ASKED_HOW: Record<string, string> = { search_history: "searched past sessions", open_results: "opened search matches", get_plan: "read the branch plan", where_left_off: "read where the last session left off", get_week: "read the recent week", get_related: "looked up what a decision led to", list_lessons: "listed lessons", list_repos: "listed repos", suggest_lesson: "suggested a lesson", get_runs: "read how agent teams did", plan_note: "said what they were doing", review_lesson: "reviewed a lesson", ask: "ran muninn ask", recall: "ran muninn recall", related: "ran muninn related" };
 export function insightsText(i: Insights): string {
@@ -108,6 +132,8 @@ export function insightsText(i: Insights): string {
   out.push(`Your last ${i.days} days with coding agents (${where})`, "");
   if (!i.sessions.total && !i.runs.count && !i.asked.count) return `${out.join("\n")}No sessions in this time.`;
   out.push(`Sessions: ${i.sessions.total} (${Object.entries(i.sessions.byTool).map(([t, n]) => `${TOOL[t] ?? t} ${n}`).join(", ")})${i.repo ? "" : `, in ${Object.keys(i.sessions.byRepo).length} repo(s)`}.`);
+  if (i.sessions.byAgent) out.push(`  ${i.sessions.byAgent} of them were started and run by another session or agent, with nobody typing.`);
+  out.push(...spendLines(i.cost));
   out.push("", "Where effort went to waste");
   if (!i.effort.byKind.length) out.push("  Nothing stood out: no loops, repeated failures or wrong paths.");
   for (const b of i.effort.byKind.slice(0, 5)) out.push(`  ${b.count} × ${b.label}${b.tokens ? `, about ${k(b.tokens)} tokens` : ""}`);
@@ -135,7 +161,7 @@ export function insightsText(i: Insights): string {
     const r = i.runs;
     const hm = (m: number) => (m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`);
     out.push("", "Autonomous runs");
-    out.push(`  ${r.count} run(s) with more than one agent, ${hm(r.minutes)} in all, about ${k(r.tokens)} tokens.`);
+    out.push(`  ${r.count} run(s) with more than one agent, ${hm(r.minutes)} in all, about ${k(r.tokens)} tokens (context re-read on every step included).`);
     if (r.byRole.length) out.push(`  Tokens by role: ${r.byRole.slice(0, 5).map((x) => `${x.role} ${Math.round(x.share * 100)}%`).join(", ")}.`);
     if (r.sentBack || r.rework) out.push(`  ${[r.sentBack ? `Work sent back ${r.sentBack} time(s)` : "", r.rework ? `${r.rework} follow-up fix(es) asked for` : ""].filter(Boolean).join(", ")}${r.reworkTokens ? `; the redo took about ${k(r.reworkTokens)} tokens` : ""}.`);
     if (r.blockersLeft.workflows) out.push(`  ${r.blockersLeft.workflows} workflow(s) finished with ${r.blockersLeft.issues} blocking review issue(s) still open.`);
