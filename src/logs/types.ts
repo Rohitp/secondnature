@@ -17,6 +17,8 @@ export const eventLine = (e: LogEvent): string =>
   : e.k === "cmd" ? `COMMAND${e.failed ? " (failed)" : ""}: ${e.cmd.slice(0, 200)}`
   : e.k === "file" ? `${e.tool.toUpperCase()}${e.failed ? " (failed)" : ""}: ${e.path.slice(0, 200)}`
   : "ENGINEER stopped the answer";
+/** The usage limit was hit: in the logs as the app's notice, or the agent telling the engineer. */
+export const LIMIT_HIT = /\[Usage limit reached;|You've hit your (?:5-hour|weekly|session) limit|Your usage limit was reached|usage limit was reached/;
 export type Tool = "claude-code" | "codex" | "cursor" | "antigravity";
 export type WorkflowRun = { id: string; name: string; status: string; started: string; durationMs: number; agents: number; tokens: number; phases: string[]; logs: string[] };
 export type AgentMessage = { ts: string; dir: "in" | "out"; from: string | null; to: string[]; text: string };
@@ -29,6 +31,8 @@ export type Session = {
   title?: string;
   /** Nobody typed in it: another session or agent started it with a brief and ran it. Counted for cost and effort, never for what the engineer said. Set by scans. */
   unattended?: boolean;
+  /** When the usage limit was hit during this session. */
+  limitHits?: string[];
   /** Tokens per model reply, with its time, so a slice of a long session can be measured on its own. */
   turns?: { ts: string; input: number; output: number; cacheRead?: number }[];
   /** A subagent: the session that started it, its type ("Explore", "general-purpose", a custom agent), and the task it was handed. */

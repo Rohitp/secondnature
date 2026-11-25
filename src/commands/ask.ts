@@ -26,6 +26,7 @@ const SIGNAL: Record<string, string> = {
   big_output: "Learned from a command that printed far more than needed",
   reread: "Learned from a file read again without changing",
   one_by_one: "Learned from the same step run on one thing after another",
+  heavy_context: "Learned from sessions that re-read a huge context on every step", wait_loop: "Learned from agents waiting in a loop of checks", big_session_ask: "Learned from short jobs sent to big finished sessions",
   skimmed: "Learned from long answers you skimmed or stopped",
   stated: "You stated this as a rule",
   promised: "An agent promised this after a mistake",

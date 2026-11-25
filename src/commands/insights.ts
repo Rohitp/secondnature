@@ -2,6 +2,7 @@ import type { Client } from "@libsql/client";
 import { effortMoments } from "../learn/signals.js";
 import { wasteIndex, type WasteRow } from "../learn/waste-index.js";
 import { HEAVY_CONTEXT, spendBreakdown, type SpendBreakdown } from "../learn/spend.js";
+import { limitReports, LIMIT_WINDOW_HOURS, type LimitReport } from "../learn/cost-signals.js";
 import { scanLogs } from "../logs/discover.js";
 import type { Session } from "../logs/types.js";
 import { repoIdentity } from "../repo/identity.js";
@@ -15,12 +16,15 @@ const KIND: Record<string, string> = {
   loop: "the same command failing again and again", failure_then_fix: "commands that failed before they worked", mistake_returned: "a failure that keeps coming back",
   refetch: "re-running commands to see more output", stopped: "commands you stopped", wrong_path: "looking for files in the wrong place", big_file: "files too big to read in one go",
   big_output: "commands that printed far more than needed", reread: "reading the same unchanged file again", one_by_one: "doing one step at a time what a script could do at once",
+  heavy_context: "one context kept alive so long that every step re-read hundreds of thousands of tokens", wait_loop: "waiting in a loop of checks, each re-reading the whole context", big_session_ask: "short jobs given to big finished sessions",
 };
 export type Insights = {
   days: number; repo: string | null;
   sessions: { total: number; byTool: Record<string, number>; byRepo: Record<string, number>; byAgent: number };
   /** Where the spend went, per session, with every call's context counted (cached re-reads included). */
   cost: SpendBreakdown;
+  /** Each time the usage limit was hit, what the hours before it went on, across every repo. */
+  limits: LimitReport[];
   /** Where output tokens went, per command and per file read, biggest cost first (top 10). */
   index: WasteRow[];
   effort: { wastedTokens: number; byKind: { kind: string; label: string; tokens: number; count: number }[]; top: { text: string; tokens: number }[]; stopped: number; interrupted: number };
@@ -73,6 +77,7 @@ export async function insightsData(db: Client, repo: string | null, days = 7, se
     days, repo,
     sessions: { total: here.length, byTool, byRepo, byAgent: here.filter((s) => s.unattended).length },
     cost: spendBreakdown(here, since),
+    limits: limitReports(all.filter((s) => lastTs(s) >= since), since),
     index: wasteIndex(here, since).slice(0, 10),
     effort: {
       wastedTokens: moments.reduce((a, m) => a + (m.wasted ?? 0), 0),
@@ -134,6 +139,11 @@ export function insightsText(i: Insights): string {
   out.push(`Sessions: ${i.sessions.total} (${Object.entries(i.sessions.byTool).map(([t, n]) => `${TOOL[t] ?? t} ${n}`).join(", ")})${i.repo ? "" : `, in ${Object.keys(i.sessions.byRepo).length} repo(s)`}.`);
   if (i.sessions.byAgent) out.push(`  ${i.sessions.byAgent} of them were started and run by another session or agent, with nobody typing.`);
   out.push(...spendLines(i.cost));
+  for (const l of i.limits.slice(-2)) {
+    const when = new Date(l.at).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    out.push("", `You hit the usage limit on ${when}. The ${LIMIT_WINDOW_HOURS} hours before it went on (every repo):`);
+    out.push(...spendLines(l.window, 4).slice(2));
+  }
   out.push("", "Where effort went to waste");
   if (!i.effort.byKind.length) out.push("  Nothing stood out: no loops, repeated failures or wrong paths.");
   for (const b of i.effort.byKind.slice(0, 5)) out.push(`  ${b.count} × ${b.label}${b.tokens ? `, about ${k(b.tokens)} tokens` : ""}`);
