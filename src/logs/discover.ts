@@ -61,7 +61,9 @@ export function scanLogs(): Scan {
   // Each session's role in a team of agents, for runs, session reviews and insights.
   for (const s of all) for (const x of [s, ...(s.subagents ?? [])]) { try { x.role = roleOf(x); } catch { /* roles are extra */ } }
   for (const s of all) {
-    if (!s.events.some((e) => e.k === "typed")) continue;
+    // A session nobody typed in still counts when its model did work: another session or agent started it with a
+    // brief. Those sessions are where unattended work, and most of its cost, happens.
+    if (!s.events.some((e) => e.k === "typed")) { if (!s.turns?.length) continue; s.unattended = true; }
     if (leftAlone(s.tool)) continue; // a tool you unticked in setup isn't read
     if (isOwnRun(s)) { scan.ownRuns++; continue; }
     const repo = s.cwd ? repoIdentity(s.cwd) : null;

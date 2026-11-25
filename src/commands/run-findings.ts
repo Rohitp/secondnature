@@ -40,7 +40,7 @@ export function runNumbers(run: Run): RunNumbers {
   const models = new Map<string, Set<string>>();
   for (const s of run.sessions) {
     const r = by.get(s.role) ?? { role: s.role, sessions: 0, minutes: 0, tokensIn: 0, tokensOut: 0, tokens: 0, share: 0, commands: 0, failed: 0, approvals: 0, sentBack: 0, reworkTokens: 0, models: [], typed: 0 };
-    r.sessions++; r.minutes += mins(s.started_at, s.ended_at); r.tokensIn += s.tokens_in; r.tokensOut += s.tokens_out; r.tokens += s.tokens_in + s.tokens_out;
+    r.sessions++; r.minutes += mins(s.started_at, s.ended_at); r.tokensIn += s.tokens_in + (s.cache_read ?? 0); r.tokensOut += s.tokens_out; r.tokens += s.tokens_in + (s.cache_read ?? 0) + s.tokens_out;
     r.commands += s.commands ?? 0; r.failed += s.failed_commands ?? 0; r.typed += s.typed ?? 0;
     if (s.model) (models.get(s.role) ?? models.set(s.role, new Set()).get(s.role)!).add(s.model);
     by.set(s.role, r);
@@ -53,7 +53,7 @@ export function runNumbers(run: Run): RunNumbers {
     for (const role of h.to_role.split(/,\s*/)) {
       const r = by.get(role); if (!r) continue;
       r.sentBack++;
-      r.reworkTokens += run.sessions.filter((s) => s.role === role && s.started_at >= h.at).reduce((a, s) => a + s.tokens_in + s.tokens_out, 0);
+      r.reworkTokens += run.sessions.filter((s) => s.role === role && s.started_at >= h.at).reduce((a, s) => a + s.tokens_in + (s.cache_read ?? 0) + s.tokens_out, 0);
     }
   }
   const tokens = [...by.values()].reduce((a, r) => a + r.tokens, 0);

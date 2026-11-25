@@ -26,13 +26,14 @@ export function readClaude(file: string): Session {
   const launches: NonNullable<Session["launches"]> = [];
   // What each tool call asked for, until its result arrives: a shell command, or a file tool and the path it named.
   const pending = new Map<string, { cmd: string } | { tool: string; path: string; pattern?: string; part?: boolean; range?: string }>();
-  let cwd = "", clientVersion = "unknown", unknown = 0, branch = "";
+  let cwd = "", clientVersion = "unknown", unknown = 0, branch = "", title = "";
   for (const o of parseLines(file, readText)) {
     // New record types are normal. A message without the expected shape means the format changed.
     if (typeof o.type !== "string" || ((o.type === "user" || o.type === "assistant") && o.message?.content === undefined)) unknown++;
     if (o.cwd) cwd ||= o.cwd;
     if (o.version) clientVersion = o.version;
     if (o.gitBranch) branch = o.gitBranch;
+    if (o.type === "custom-title" && typeof o.customTitle === "string" && o.customTitle) title = o.customTitle;
     // A message's tokens, once per message (its blocks are logged as separate records with the same id).
     const u = o.type === "assistant" ? o.message?.usage : null;
     if (u && !counted.has(o.message.id ?? o.uuid)) {
@@ -104,7 +105,7 @@ export function readClaude(file: string): Session {
       if (typeof path === "string" && path) pending.set(x.id, { tool: String(x.name).toLowerCase(), path, ...(typeof x.input?.pattern === "string" ? { pattern: x.input.pattern } : {}), ...(x.input?.offset != null || x.input?.limit != null ? { part: true, range: `${x.input?.offset ?? 1}+${x.input?.limit ?? ""}` } : {}) });
     }
   }
-  const base: Session = { id: sessionIdOf(file), tool: "claude-code", cwd, clientVersion, events, unknown, branch: branch || undefined, file, usage, turns, ...(model ? { model } : {}), ...(messages.length ? { messages } : {}), ...(launches.length ? { launches } : {}) };
+  const base: Session = { id: sessionIdOf(file), tool: "claude-code", cwd, clientVersion, events, unknown, branch: branch || undefined, file, usage, turns, ...(model ? { model } : {}), ...(messages.length ? { messages } : {}), ...(launches.length ? { launches } : {}), ...(title ? { title } : {}) };
   if (!sub) return base;
   let meta: { agentType?: string; description?: string; name?: string; workflowPhase?: string; inWorkflowRun?: boolean } = {};
   const metaFile = join(dirname(file), `${sessionIdOf(file)}.meta.json`);
